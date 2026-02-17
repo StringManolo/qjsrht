@@ -119,12 +119,12 @@ jobs:
     # Parchear express.js del repositorio y copiarlo a assets
     - name: Patch and copy express.js
       run: |
-        # Parchear el archivo original (cambiar network_sockets.so por qjsnet.so y eliminar /dist/)
-        sed -i 's/network_sockets\.so/qjsnet.so/g' build/qjsNetworkSockets/extra/express.js
-        sed -i 's|/dist/||g' build/qjsNetworkSockets/extra/express.js
-        # Copiar a assets (sobrescribe cualquier versión local)
+        # Reemplazar la línea de importación completa por la correcta
+        sed -i '/^import sockets /c import sockets from '\''./qjsnet.so'\'';' build/qjsNetworkSockets/extra/express.js
+        # Copiar a assets
         cp build/qjsNetworkSockets/extra/express.js app/src/main/assets/express.js
-        echo "express.js copiado y parcheado correctamente"
+        # Mostrar las primeras líneas para verificar
+        head -n 10 app/src/main/assets/express.js
 
     # Verificar que el import sea correcto (opcional)
     - name: Verify express.js content
