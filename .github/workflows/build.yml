@@ -116,7 +116,19 @@ jobs:
         $STRIP qjsnet.so
         cp qjsnet.so ../../app/src/main/assets/arm64/
 
-    # ELIMINADO: Ya no se copia express.js desde el repositorio, se usa el local.
+    # Parchear express.js del repositorio y copiarlo a assets
+    - name: Patch and copy express.js
+      run: |
+        # Parchear el archivo original (cambiar network_sockets.so por qjsnet.so y eliminar /dist/)
+        sed -i 's/network_sockets\.so/qjsnet.so/g' build/qjsNetworkSockets/extra/express.js
+        sed -i 's|/dist/||g' build/qjsNetworkSockets/extra/express.js
+        # Copiar a assets (sobrescribe cualquier versión local)
+        cp build/qjsNetworkSockets/extra/express.js app/src/main/assets/express.js
+        echo "express.js copiado y parcheado correctamente"
+
+    # Verificar que el import sea correcto (opcional)
+    - name: Verify express.js content
+      run: head -n 5 app/src/main/assets/express.js
 
     - name: Download Tor binaries for ARM (if onion mode)
       if: steps.config.outputs.network_type == 'onion'
