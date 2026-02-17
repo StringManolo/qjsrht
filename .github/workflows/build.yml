@@ -64,13 +64,13 @@ jobs:
     - name: Download QuickJS binaries for ARM64
       run: |
         mkdir -p app/src/main/assets/arm64
-        wget -O app/src/main/assets/arm64/qjs https://github.com/StringManolo/QJSB4A/releases/download/v1.0.10/qjs-aarch64
+        wget -O app/src/main/assets/arm64/qjs https://github.com/StringManolo/QJSB4A/releases/download/v1.0.16/qjs-arm64-v8a
         chmod +x app/src/main/assets/arm64/qjs
 
     - name: Download QuickJS binaries for ARM32
       run: |
         mkdir -p app/src/main/assets/arm32
-        wget -O app/src/main/assets/arm32/qjs https://github.com/StringManolo/QJSB4A/releases/download/v1.0.10/qjs-armv7
+        wget -O app/src/main/assets/arm32/qjs https://github.com/StringManolo/QJSB4A/releases/download/v1.0.16/qjs-armeabi-v7a
         chmod +x app/src/main/assets/arm32/qjs
 
     # Descargar fuentes de QuickJS (solo para los headers)
