@@ -22,7 +22,6 @@ class ServerService : Service() {
     private lateinit var config: JSONObject
     private var mode: String = "debug"
 
-    // Para enviar logs a la actividad
     companion object {
         var logListener: ((String) -> Unit)? = null
         private val handler = Handler(Looper.getMainLooper())
@@ -32,7 +31,6 @@ class ServerService : Service() {
         logListener?.let { listener ->
             handler.post { listener(msg) }
         }
-        // También a Logcat
         Log.d(TAG, msg)
     }
 
@@ -66,7 +64,7 @@ class ServerService : Service() {
             logInfo("Config loaded: mode=$mode")
         } catch (e: Exception) {
             logError("Failed to load config", e)
-            config = JSONObject() // fallback
+            config = JSONObject()
         }
     }
 
@@ -122,7 +120,6 @@ class ServerService : Service() {
 
         logInfo("Architecture: $arch, Network type: $networkType")
 
-        // Extraer binarios
         extractAsset("$arch/qjs", File(appDir, "qjs"))
         extractAsset("$arch/qjsnet.so", File(appDir, "qjsnet.so"))
         extractAsset("express.js", File(appDir, "express.js"))
@@ -139,10 +136,8 @@ class ServerService : Service() {
             extractAsset("tor/torrc", File(appDir, "torrc"))
         }
 
-        // Dar permisos
         File(appDir, "qjs").setExecutable(true)
 
-        // Listar archivos extraídos
         logInfo("Files in app dir:")
         appDir.listFiles()?.forEach {
             logInfo("  ${it.name} (${it.length()} bytes, executable=${it.canExecute()})")
@@ -177,32 +172,40 @@ class ServerService : Service() {
         val appDir = filesDir
         val networkObj = try { config.getJSONObject("network") } catch (e: Exception) { JSONObject() }
         val networkType = networkObj.optString("type", "local")
-        val networkAddress = networkObj.optString("address", "")
         val networkPort = networkObj.optInt("port", 8080)
 
+        // Dirección donde escuchará el servidor (siempre local)
+        val bindAddress = if (networkType == "onion") {
+            "0.0.0.0"
+        } else {
+            val addr = networkObj.optString("address", "")
+            if (addr.isBlank()) "0.0.0.0" else addr
+        }
+
+        // Si es onion, iniciar Tor y obtener dirección onion para información
+        var onionAddress = ""
         if (networkType == "onion") {
             startTor(appDir)
             Thread.sleep(10000)
-        }
-
-        val address = when (networkType) {
-            "onion" -> {
-                val hostnameFile = File(appDir, "hidden_service/hostname")
-                if (hostnameFile.exists()) hostnameFile.readText().trim() else "unknown.onion"
+            val hostnameFile = File(appDir, "hidden_service/hostname")
+            if (hostnameFile.exists()) {
+                onionAddress = hostnameFile.readText().trim()
+                logInfo("Onion address: $onionAddress")
+            } else {
+                logError("Hostname file not found")
             }
-            else -> networkAddress
         }
 
-        logInfo("Binding to $address:$networkPort")
+        logInfo("Binding to $bindAddress:$networkPort")
 
-        // Preparar server_run.js
+        // Preparar server_run.js con la dirección de bind correcta
         val serverJsFile = File(appDir, "server.js")
         if (!serverJsFile.exists()) {
             logError("server.js not found")
             return
         }
         val serverJsContent = serverJsFile.readText()
-        val modifiedContent = "const ADDRESS = '$address';\nconst PORT = $networkPort;\n" + serverJsContent
+        val modifiedContent = "const ADDRESS = '$bindAddress';\nconst PORT = $networkPort;\n" + serverJsContent
         File(appDir, "server_run.js").writeText(modifiedContent)
 
         val qjsPath = File(appDir, "qjs").absolutePath
@@ -218,7 +221,6 @@ class ServerService : Service() {
             qjsProcess = processBuilder.start()
             logInfo("QuickJS started")
 
-            // Leer salida en tiempo real
             Thread {
                 val reader = BufferedReader(InputStreamReader(qjsProcess!!.inputStream))
                 var line: String?
