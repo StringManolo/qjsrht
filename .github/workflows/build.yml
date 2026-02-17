@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # Usamos 22.04 para compatibilidad con tu workflow de compilación
 
     steps:
     - name: Checkout code
@@ -29,12 +29,6 @@ jobs:
         echo "network_address=$NETWORK_ADDRESS" >> $GITHUB_OUTPUT
         echo "network_port=$NETWORK_PORT" >> $GITHUB_OUTPUT
         echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
-
-        echo "Configuration loaded:"
-        echo "  Mode: $MODE"
-        echo "  Network Type: $NETWORK_TYPE"
-        echo "  Address: $NETWORK_ADDRESS"
-        echo "  Port: $NETWORK_PORT"
 
     - name: Set up JDK 17
       uses: actions/setup-java@v3
@@ -58,28 +52,120 @@ jobs:
     - name: Install build dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential wget git curl jq tor
+        sudo apt-get install -y build-essential wget git curl jq tor bc
 
-    # Descargar binarios precompilados de QuickJS
-    - name: Download QuickJS binaries for ARM64
+    # Compilar QuickJS para ARM64 (dinámico) con correcciones TLS
+    - name: Compile QuickJS for ARM64 (dynamic)
       run: |
-        mkdir -p app/src/main/assets/arm64
-        wget -O app/src/main/assets/arm64/qjs https://github.com/StringManolo/QJSB4A/releases/download/v1.0.16/qjs-arm64-v8a
-        chmod +x app/src/main/assets/arm64/qjs
+        export API=21
+        export HOST_TRIPLE="aarch64-linux-android"
+        export TLS_ALIGN=64
+        export TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+        export CC="$TOOLCHAIN/${HOST_TRIPLE}${API}-clang"
+        export AR="$TOOLCHAIN/llvm-ar"
+        export STRIP="$TOOLCHAIN/llvm-strip"
+        export RANLIB="$TOOLCHAIN/llvm-ranlib"
 
-    - name: Download QuickJS binaries for ARM32
-      run: |
-        mkdir -p app/src/main/assets/arm32
-        wget -O app/src/main/assets/arm32/qjs https://github.com/StringManolo/QJSB4A/releases/download/v1.0.16/qjs-armeabi-v7a
-        chmod +x app/src/main/assets/arm32/qjs
-
-    # Descargar fuentes de QuickJS (solo para los headers)
-    - name: Download QuickJS source
-      run: |
-        mkdir -p build/quickjs-src
-        cd build/quickjs-src
+        mkdir -p build/quickjs-arm64
+        cd build/quickjs-arm64
         wget https://bellard.org/quickjs/quickjs-2024-01-13.tar.xz
-        tar xf quickjs-2024-01-13.tar.xz --strip-components=1
+        tar xf quickjs-2024-01-13.tar.xz
+        cd quickjs-2024-01-13
+
+        # Compilar nativo primero (para generar qjsc)
+        make -j$(nproc)
+
+        # Crear directorio para compilación cruzada
+        cd ..
+        cp -r quickjs-2024-01-13 quickjs-cross
+        cd quickjs-cross
+
+        # Aplicar correcciones de alineación TLS (como en tu workflow)
+        echo "Adding __attribute__((aligned(${TLS_ALIGN}))) to __thread variables"
+        find . -name '*.[ch]' -exec sed -i 's/\(\b__thread\b\)/__thread __attribute__((aligned('${TLS_ALIGN}')))/g' {} \;
+
+        # Crear archivo de ensamblador para forzar alineación
+        cat > tls_force_align.S <<EOF
+        .section .tdata,"awT",%progbits
+        .p2align $(echo "l(${TLS_ALIGN})/l(2)" | bc -l | cut -d. -f1)
+        .globl quickjs_tls_force_align
+        .type quickjs_tls_force_align, %object
+        .size quickjs_tls_force_align, ${TLS_ALIGN}
+        quickjs_tls_force_align:
+        .zero ${TLS_ALIGN}
+        EOF
+
+        # Compilar el objeto de alineación
+        $CC -c tls_force_align.S -o tls_force_align.o
+
+        # Compilar qjs dinámico (sin -static)
+        export CFLAGS="-fPIC -O2 -ftls-model=initial-exec -pthread"
+        export LDFLAGS="-pthread -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384 -Wl,-z,relro,-z,now"
+        make qjs \
+          CC="$CC" \
+          AR="$AR" \
+          QJSC="../quickjs-2024-01-13/qjsc" \
+          LDFLAGS="$LDFLAGS" \
+          LIBS="tls_force_align.o -lm -ldl" \
+          -j$(nproc)
+
+        $STRIP qjs
+        mkdir -p ../../../app/src/main/assets/arm64
+        cp qjs ../../../app/src/main/assets/arm64/
+        chmod +x ../../../app/src/main/assets/arm64/qjs
+
+    # Compilar QuickJS para ARM32 (dinámico)
+    - name: Compile QuickJS for ARM32 (dynamic)
+      run: |
+        export API=21
+        export HOST_TRIPLE="armv7a-linux-androideabi"
+        export TLS_ALIGN=32
+        export TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+        export CC="$TOOLCHAIN/${HOST_TRIPLE}${API}-clang"
+        export AR="$TOOLCHAIN/llvm-ar"
+        export STRIP="$TOOLCHAIN/llvm-strip"
+        export RANLIB="$TOOLCHAIN/llvm-ranlib"
+
+        mkdir -p build/quickjs-arm32
+        cd build/quickjs-arm32
+        wget https://bellard.org/quickjs/quickjs-2024-01-13.tar.xz
+        tar xf quickjs-2024-01-13.tar.xz
+        cd quickjs-2024-01-13
+        make -j$(nproc)
+
+        cd ..
+        cp -r quickjs-2024-01-13 quickjs-cross
+        cd quickjs-cross
+
+        echo "Adding __attribute__((aligned(${TLS_ALIGN}))) to __thread variables"
+        find . -name '*.[ch]' -exec sed -i 's/\(\b__thread\b\)/__thread __attribute__((aligned('${TLS_ALIGN}')))/g' {} \;
+
+        cat > tls_force_align.S <<EOF
+        .section .tdata,"awT",%progbits
+        .p2align $(echo "l(${TLS_ALIGN})/l(2)" | bc -l | cut -d. -f1)
+        .globl quickjs_tls_force_align
+        .type quickjs_tls_force_align, %object
+        .size quickjs_tls_force_align, ${TLS_ALIGN}
+        quickjs_tls_force_align:
+        .zero ${TLS_ALIGN}
+        EOF
+
+        $CC -c tls_force_align.S -o tls_force_align.o
+
+        export CFLAGS="-fPIC -O2 -ftls-model=initial-exec -pthread"
+        export LDFLAGS="-pthread -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384 -Wl,-z,relro,-z,now"
+        make qjs \
+          CC="$CC" \
+          AR="$AR" \
+          QJSC="../quickjs-2024-01-13/qjsc" \
+          LDFLAGS="$LDFLAGS" \
+          LIBS="tls_force_align.o -lm -ldl" \
+          -j$(nproc)
+
+        $STRIP qjs
+        mkdir -p ../../../app/src/main/assets/arm32
+        cp qjs ../../../app/src/main/assets/arm32/
+        chmod +x ../../../app/src/main/assets/arm32/qjs
 
     # Compilar qjsNetworkSockets para ARM32
     - name: Clone and compile qjsNetworkSockets for ARM32
@@ -89,12 +175,13 @@ jobs:
         git clone https://github.com/StringManolo/qjsNetworkSockets.git
         cd qjsNetworkSockets
 
-        export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
-        export CC="$TOOLCHAIN/bin/armv7a-linux-androideabi21-clang"
-        export STRIP="$TOOLCHAIN/bin/llvm-strip"
+        export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
+        export CC="$TOOLCHAIN/armv7a-linux-androideabi21-clang"
+        export STRIP="$TOOLCHAIN/llvm-strip"
 
+        # Usar headers de la compilación de QuickJS (con las correcciones TLS)
         $CC -shared -fPIC -o qjsnet.so src/qjs_sockets.c \
-          -I../quickjs-src \
+          -I../../quickjs-arm32/quickjs-cross \
           -Os
 
         $STRIP qjsnet.so
@@ -105,42 +192,31 @@ jobs:
       run: |
         cd build/qjsNetworkSockets
 
-        export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
-        export CC="$TOOLCHAIN/bin/aarch64-linux-android21-clang"
-        export STRIP="$TOOLCHAIN/bin/llvm-strip"
+        export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
+        export CC="$TOOLCHAIN/aarch64-linux-android21-clang"
+        export STRIP="$TOOLCHAIN/llvm-strip"
 
         $CC -shared -fPIC -o qjsnet.so src/qjs_sockets.c \
-          -I../quickjs-src \
+          -I../../quickjs-arm64/quickjs-cross \
           -Os
 
         $STRIP qjsnet.so
         cp qjsnet.so ../../app/src/main/assets/arm64/
 
-    # Parchear express.js del repositorio y copiarlo a assets
+    # Parchear y copiar express.js
     - name: Patch and copy express.js
       run: |
-        # Reemplazar la línea de importación completa por la correcta
-        sed -i '/^import sockets /c import sockets from '\''./qjsnet.so'\'';' build/qjsNetworkSockets/extra/express.js
-        # Copiar a assets
+        sed -i 's/network_sockets\.so/qjsnet.so/g' build/qjsNetworkSockets/extra/express.js
+        sed -i 's|/dist/||g' build/qjsNetworkSockets/extra/express.js
         cp build/qjsNetworkSockets/extra/express.js app/src/main/assets/express.js
-        # Mostrar las primeras líneas para verificar
-        head -n 10 app/src/main/assets/express.js
-
-    # Verificar que el import sea correcto (opcional)
-    - name: Verify express.js content
-      run: head -n 5 app/src/main/assets/express.js
 
     - name: Download Tor binaries for ARM (if onion mode)
       if: steps.config.outputs.network_type == 'onion'
       run: |
         mkdir -p tor-download
         cd tor-download
-
-        # ARM32
         wget https://github.com/StringManolo/TB4A/releases/download/V1.0.0/tor-armeabi-v7a -O ../app/src/main/assets/arm32/tor
         chmod +x ../app/src/main/assets/arm32/tor
-
-        # ARM64
         wget https://github.com/StringManolo/TB4A/releases/download/V1.0.0/tor-arm64-v8a -O ../app/src/main/assets/arm64/tor
         chmod +x ../app/src/main/assets/arm64/tor
 
@@ -148,35 +224,26 @@ jobs:
       if: steps.config.outputs.network_type == 'onion'
       run: |
         mkdir -p tor-hs
-
         cat > tor-hs/torrc << EOF
         SOCKSPort 0
         HiddenServiceDir /tmp/hidden_service
         HiddenServicePort ${{ steps.config.outputs.network_port }} 127.0.0.1:${{ steps.config.outputs.network_port }}
         EOF
-
         tor -f tor-hs/torrc &
         TOR_PID=$!
-
         echo "Waiting for Tor to generate hidden service..."
         for i in {1..30}; do
-          if [ -f /tmp/hidden_service/hostname ]; then
-            break
-          fi
+          if [ -f /tmp/hidden_service/hostname ]; then break; fi
           sleep 1
         done
-
         if [ -f /tmp/hidden_service/hostname ]; then
           ONION_ADDRESS=$(cat /tmp/hidden_service/hostname)
           echo "DEBUG-ONION: $ONION_ADDRESS"
           echo "onion_address=$ONION_ADDRESS" >> $GITHUB_ENV
         fi
-
         kill $TOR_PID || true
-
         mkdir -p app/src/main/assets/tor/hidden_service
         cp -r /tmp/hidden_service/* app/src/main/assets/tor/hidden_service/
-
         cat > app/src/main/assets/tor/torrc << EOF
         SOCKSPort 0
         HiddenServiceDir hidden_service
