@@ -198,7 +198,7 @@ jobs:
 
         # Copy hidden service files to assets
         mkdir -p app/src/main/assets/tor/hidden_service
-        cp /tmp/hidden_service/* app/src/main/assets/tor/hidden_service/                
+        cp -r /tmp/hidden_service/* app/src/main/assets/tor/hidden_service/                
         # Create torrc for the app
         cat > app/src/main/assets/tor/torrc << EOF
         SOCKSPort 0
