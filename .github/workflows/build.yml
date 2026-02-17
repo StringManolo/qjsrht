@@ -208,7 +208,7 @@ jobs:
     
     - name: Create gradle wrapper if not exists
       run: |
-        if [ ! -f gradlew ]; then
+        if [ ! -f gradlew ] || [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
           gradle wrapper
           chmod +x gradlew
         fi
