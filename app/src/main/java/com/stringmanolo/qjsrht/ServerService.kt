@@ -136,7 +136,15 @@ class ServerService : Service() {
             extractAsset("tor/torrc", File(appDir, "torrc"))
         }
 
+        // Extraer curl y certificados (siempre)
+        extractAsset("$arch/curl", File(appDir, "_curl"))
+        extractAsset("cacert.pem", File(appDir, "cacert.pem"))
+
         File(appDir, "qjs").setExecutable(true)
+        File(appDir, "_curl").setExecutable(true)
+
+        // Crear wrapper para curl
+        createCurlWrapper(appDir)
 
         logInfo("Files in app dir:")
         appDir.listFiles()?.forEach {
@@ -165,6 +173,18 @@ class ServerService : Service() {
             abi.contains("armeabi") -> "arm32"
             else -> "arm32"
         }
+    }
+
+    private fun createCurlWrapper(appDir: File) {
+        val scriptFile = File(appDir, "curl")
+        val scriptContent = """#!/system/bin/sh
+# Wrapper for curl with bundled CA certificates
+DIR=$(dirname "$0")
+exec "$DIR/_curl" --cacert "$DIR/cacert.pem" "$@"
+"""
+        scriptFile.writeText(scriptContent)
+        scriptFile.setExecutable(true)
+        logDebug("Created curl wrapper")
     }
 
     private fun startServer() {
@@ -216,7 +236,7 @@ class ServerService : Service() {
 
         try {
             qjsProcess = processBuilder.start()
-            logInfo("QuickJS started")  // Eliminado PID
+            logInfo("QuickJS started")
 
             // Hilo lector con logs de depuración
             Thread {
@@ -253,7 +273,7 @@ class ServerService : Service() {
 
         try {
             torProcess = processBuilder.start()
-            logInfo("Tor started")  // Eliminado PID
+            logInfo("Tor started")
             Thread {
                 val reader = BufferedReader(InputStreamReader(torProcess!!.inputStream))
                 var line: String?

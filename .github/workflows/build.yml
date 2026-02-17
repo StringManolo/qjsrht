@@ -206,6 +206,15 @@ jobs:
         HiddenServicePort ${{ steps.config.outputs.network_port }} 127.0.0.1:${{ steps.config.outputs.network_port }}
         EOF
 
+    # Descargar curl y certificados (siempre)
+    - name: Download curl binaries and CA bundle
+      run: |
+        mkdir -p app/src/main/assets/arm64 app/src/main/assets/arm32
+        wget https://github.com/StringManolo/CURLB4A/releases/download/v1.0.0/curl-arm64-v8a -O app/src/main/assets/arm64/curl
+        wget https://github.com/StringManolo/CURLB4A/releases/download/v1.0.0/curl-armeabi-v7a -O app/src/main/assets/arm32/curl
+        wget https://github.com/StringManolo/CURLB4A/releases/download/v1.0.0/cacert.pem -O app/src/main/assets/cacert.pem
+        chmod +x app/src/main/assets/arm64/curl app/src/main/assets/arm32/curl
+
     # Copiar config.json a assets
     - name: Copy config.json to assets
       run: cp config.json app/src/main/assets/
