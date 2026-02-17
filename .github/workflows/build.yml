@@ -2,9 +2,9 @@ name: Build qjsrht APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, feature/clientAndNative ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, feature/clientAndNative ]
   workflow_dispatch:
 
 jobs:

@@ -21,6 +21,7 @@ class ServerService : Service() {
     private val CHANNEL_ID = "ServerServiceChannel"
     private lateinit var config: JSONObject
     private var mode: String = "debug"
+    private var nativeServer: NativeServer? = null
 
     companion object {
         var logListener: ((String) -> Unit)? = null
@@ -274,6 +275,16 @@ exec "${'$'}DIR/_curl" --cacert "${'$'}DIR/cacert.pem" "${'$'}@"
         } catch (e: Exception) {
             logError("Failed to start QuickJS", e)
         }
+
+        try {
+            logInfo("Starting FIFO Native server...")
+            nativeServer = NativeServer(this)
+            nativeServer?.start()
+            logInfo("FIFO Native server started")
+        } catch (e: Exception) {
+             logError("Failed to start FIFO Native server", e)
+        }
+
     }
 
     private fun startTor(appDir: File) {
@@ -307,6 +318,8 @@ exec "${'$'}DIR/_curl" --cacert "${'$'}DIR/cacert.pem" "${'$'}@"
         logInfo("Service destroyed")
         qjsProcess?.destroy()
         torProcess?.destroy()
+       // nativeServer?.stop()
+        nativeServer?.destroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
