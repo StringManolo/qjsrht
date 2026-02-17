@@ -5,6 +5,7 @@
     android:orientation="vertical"
     android:padding="8dp">
 
+    <!-- Primera fila de botones -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -27,13 +28,42 @@
             android:text="Test Tor" />
 
         <Button
-            android:id="@+id/btnClear"
+            android:id="@+id/btnCheckFiles"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Clear" />
+            android:text="Check Files" />
     </LinearLayout>
 
+    <!-- Segunda fila de botones -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:padding="4dp">
+
+        <Button
+            android:id="@+id/btnRefreshLogs"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Refresh Logs" />
+
+        <Button
+            android:id="@+id/btnClearLogs"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Clear Logs" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1" />
+    </LinearLayout>
+
+    <!-- Tercera fila de botones -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -61,6 +91,7 @@
             android:layout_weight="1" />
     </LinearLayout>
 
+    <!-- Área de logs -->
     <ScrollView
         android:id="@+id/scrollView"
         android:layout_width="match_parent"
@@ -73,7 +104,8 @@
             android:layout_height="wrap_content"
             android:fontFamily="monospace"
             android:textIsSelectable="true"
-            android:textSize="10sp" />
+            android:textSize="10sp"
+            android:text="Waiting for logs..." />
     </ScrollView>
 
 </LinearLayout>
