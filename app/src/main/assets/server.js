@@ -6,8 +6,7 @@ import * as os from 'os';  // Módulo nativo para ejecutar comandos
 
 const app = express();
 
-// Token de autenticación (¡cámbialo por uno seguro!)
-const AUTH_TOKEN = "secreto123";
+const AUTH_TOKEN = "__AUTH_TOKEN__";;
 
 // Middleware de autenticación
 function authenticate(req, res, next) {

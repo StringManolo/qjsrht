@@ -224,6 +224,21 @@ jobs:
     - name: Copy config.json to assets
       run: cp config.json app/src/main/assets/
 
+    # Asegurar que server.js es el local (con marcador) e inyectar token
+    - name: Copy local server.js to assets (overwrite any existing)
+      run: |
+        # Si server.js está en la raíz del repo, cópialo. Ajusta la ruta si es necesario.
+        cp app/src/main/assets/server.js app/src/main/assets/server.js.backup || true
+        # En realidad, si ya está en assets, no hace falta copiar, pero lo dejamos por claridad.
+        # Si tu server.js está en otro lado, cambia la ruta.
+        echo "Usando server.js local"
+        ls -la app/src/main/assets/server.js
+
+    - name: Inject auth token from secrets
+      run: |
+        sed -i "s/__AUTH_TOKEN__/${{ secrets.AUTH_TOKEN }}/g" app/src/main/assets/server.js
+        echo "Token inyectado correctamente"
+
     - name: Build APK (Debug)
       if: steps.config.outputs.mode == 'debug'
       run: gradle assembleDebug --stacktrace
