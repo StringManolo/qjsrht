@@ -2,7 +2,7 @@
 // Edit this file to customize your server behavior
 // ADDRESS and PORT will be injected automatically from config.json
 
-const express = require('./express.js');
+import express from './express.js';
 const app = express();
 
 // Basic logging middleware
