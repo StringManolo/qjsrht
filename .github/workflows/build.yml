@@ -80,7 +80,6 @@ jobs:
         cd build/quickjs-src
         wget https://bellard.org/quickjs/quickjs-2024-01-13.tar.xz
         tar xf quickjs-2024-01-13.tar.xz --strip-components=1
-        # Los headers estarán en build/quickjs-src (quickjs.h, etc.)
 
     # Compilar qjsNetworkSockets para ARM32
     - name: Clone and compile qjsNetworkSockets for ARM32
@@ -94,7 +93,6 @@ jobs:
         export CC="$TOOLCHAIN/bin/armv7a-linux-androideabi21-clang"
         export STRIP="$TOOLCHAIN/bin/llvm-strip"
 
-        # Compilar usando los headers descargados (ruta corregida: ../quickjs-src)
         $CC -shared -fPIC -o qjsnet.so src/qjs_sockets.c \
           -I../quickjs-src \
           -Os
@@ -111,7 +109,6 @@ jobs:
         export CC="$TOOLCHAIN/bin/aarch64-linux-android21-clang"
         export STRIP="$TOOLCHAIN/bin/llvm-strip"
 
-        # Compilar usando los headers descargados (ruta corregida: ../quickjs-src)
         $CC -shared -fPIC -o qjsnet.so src/qjs_sockets.c \
           -I../quickjs-src \
           -Os
@@ -119,9 +116,7 @@ jobs:
         $STRIP qjsnet.so
         cp qjsnet.so ../../app/src/main/assets/arm64/
 
-    - name: Copy express.js
-      run: |
-        cp build/qjsNetworkSockets/extra/express.js app/src/main/assets/
+    # ELIMINADO: Ya no se copia express.js desde el repositorio, se usa el local.
 
     - name: Download Tor binaries for ARM (if onion mode)
       if: steps.config.outputs.network_type == 'onion'
