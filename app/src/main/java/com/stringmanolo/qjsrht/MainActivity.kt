@@ -20,19 +20,16 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Cargar configuración desde assets
         loadConfig()
 
         val mode = config.getString("mode")
 
-        // Si es modo production, no mostrar UI
         if (mode == "production") {
             startServerService()
             finish()
             return
         }
 
-        // Modo debug - mostrar UI de logs
         setContentView(R.layout.activity_main)
 
         logTextView = findViewById(R.id.logTextView)
@@ -62,14 +59,16 @@ class MainActivity : AppCompatActivity() {
                 val process = Runtime.getRuntime().exec("logcat -v time ServerService:V *:S")
                 val reader = BufferedReader(InputStreamReader(process.inputStream))
 
-                var line: String?
-                while (isRunning && reader.readLine().also { line = it } != null) {
+                var line = reader.readLine()
+                while (isRunning && line != null) {
+                    val currentLine = line
                     runOnUiThread {
-                        logTextView.append(line + "\n")
+                        logTextView.append("$currentLine\n")
                         scrollView.post {
                             scrollView.fullScroll(ScrollView.FOCUS_DOWN)
                         }
                     }
+                    line = reader.readLine()
                 }
             } catch (e: Exception) {
                 runOnUiThread {
