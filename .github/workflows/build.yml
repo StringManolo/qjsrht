@@ -209,7 +209,8 @@ jobs:
     - name: Create gradle wrapper if not exists
       run: |
         if [ ! -f gradlew ] || [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-          gradle wrapper
+          # gradle wrapper 
+          gradle wrapper --gradle-version 8.4 --distribution-type bin
           chmod +x gradlew
         fi
     
