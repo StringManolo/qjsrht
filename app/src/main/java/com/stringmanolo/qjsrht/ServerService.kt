@@ -85,7 +85,7 @@ class ServerService : Service() {
 
         Log.d(TAG, "Architecture: $arch")
 
-        // Extract binaries
+        // Extract binaries (siempre sobrescribir qjs y qjsnet.so, son pequeños)
         extractAsset("$arch/qjs", File(appDir, "qjs"))
         extractAsset("$arch/qjsnet.so", File(appDir, "qjsnet.so"))
 
@@ -93,11 +93,21 @@ class ServerService : Service() {
         extractAsset("express.js", File(appDir, "express.js"))
         extractAsset("server.js", File(appDir, "server.js"))
 
-        // If onion mode, extract Tor
+        // If onion mode, handle Tor (evitar ETXTBSY)
         if (networkType == "onion") {
-            extractAsset("$arch/tor", File(appDir, "tor"))
+            val torFile = File(appDir, "tor")
+            // Solo extraer si no existe (para no interferir con proceso en ejecución)
+            if (!torFile.exists()) {
+                extractAsset("$arch/tor", torFile)
+            } else {
+                Log.d(TAG, "Tor binary already exists, skipping extraction")
+            }
+            torFile.setExecutable(true) // Asegurar permisos
+
+            // torrc siempre se puede sobrescribir
             extractAsset("tor/torrc", File(appDir, "torrc"))
 
+            // Hidden service files
             try {
                 val hsDir = File(appDir, "hidden_service")
                 hsDir.mkdirs()
@@ -109,11 +119,8 @@ class ServerService : Service() {
             }
         }
 
-        // Set execute permissions
+        // Set execute permissions for qjs (siempre)
         File(appDir, "qjs").setExecutable(true)
-        if (networkType == "onion") {
-            File(appDir, "tor").setExecutable(true)
-        }
 
         Log.d(TAG, "Assets extracted successfully")
     }
