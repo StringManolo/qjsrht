@@ -117,6 +117,7 @@ class ServerService : Service() {
         val appDir = filesDir
         val arch = getArchitecture()
         val networkType = try { config.getJSONObject("network").getString("type") } catch (e: Exception) { "local" }
+        val networkPort = try { config.getJSONObject("network").getInt("port") } catch (e: Exception) { 8080 }
 
         logInfo("Architecture: $arch, Network type: $networkType")
 
@@ -133,7 +134,22 @@ class ServerService : Service() {
                 logDebug("Tor binary already exists")
             }
             torFile.setExecutable(true)
-            extractAsset("tor/torrc", File(appDir, "torrc"))
+
+            // Extraer claves del hidden service pre-generadas en el build
+            val hsDir = File(appDir, "hidden_service")
+            hsDir.mkdirs()
+            listOf("hs_ed25519_secret_key", "hs_ed25519_public_key", "hostname").forEach { file ->
+                extractAsset("tor/hidden_service/$file", File(hsDir, file))
+            }
+
+            // Generar torrc dinámico con rutas absolutas para que Tor encuentre las claves
+            val torrcContent = """
+                SOCKSPort 0
+                HiddenServiceDir ${hsDir.absolutePath}
+                HiddenServicePort $networkPort 127.0.0.1:$networkPort
+            """.trimIndent()
+            File(appDir, "torrc").writeText(torrcContent)
+            logDebug("Generated torrc with absolute path: ${hsDir.absolutePath}")
         }
 
         // Extraer curl y certificados (siempre)
