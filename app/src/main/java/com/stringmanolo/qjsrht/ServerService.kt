@@ -174,7 +174,6 @@ class ServerService : Service() {
         val networkType = networkObj.optString("type", "local")
         val networkPort = networkObj.optInt("port", 8080)
 
-        // Dirección donde escuchará el servidor (siempre local)
         val bindAddress = if (networkType == "onion") {
             "0.0.0.0"
         } else {
@@ -182,7 +181,6 @@ class ServerService : Service() {
             if (addr.isBlank()) "0.0.0.0" else addr
         }
 
-        // Si es onion, iniciar Tor y obtener dirección onion para información
         var onionAddress = ""
         if (networkType == "onion") {
             startTor(appDir)
@@ -198,7 +196,6 @@ class ServerService : Service() {
 
         logInfo("Binding to $bindAddress:$networkPort")
 
-        // Preparar server_run.js con la dirección de bind correcta
         val serverJsFile = File(appDir, "server.js")
         if (!serverJsFile.exists()) {
             logError("server.js not found")
@@ -215,19 +212,29 @@ class ServerService : Service() {
         val processBuilder = ProcessBuilder(qjsPath, "-m", serverPath)
         processBuilder.directory(appDir)
         processBuilder.environment()["LD_LIBRARY_PATH"] = appDir.absolutePath
-        processBuilder.redirectErrorStream(true)
+        processBuilder.redirectErrorStream(true)  // Combina stdout y stderr
 
         try {
             qjsProcess = processBuilder.start()
-            logInfo("QuickJS started")
+            logInfo("QuickJS started, PID: ${qjsProcess?.pid()}")
 
+            // Hilo lector con logs de depuración
             Thread {
+                logInfo("QJS reader thread started")
                 val reader = BufferedReader(InputStreamReader(qjsProcess!!.inputStream))
                 var line: String?
                 while (reader.readLine().also { line = it } != null) {
                     logToUI("QJS: $line")
                 }
+                logInfo("QJS reader thread finished (process ended?)")
             }.start()
+
+            // Hilo para esperar la terminación del proceso (opcional)
+            Thread {
+                val exitCode = qjsProcess!!.waitFor()
+                logInfo("QuickJS process exited with code $exitCode")
+            }.start()
+
         } catch (e: Exception) {
             logError("Failed to start QuickJS", e)
         }
@@ -246,7 +253,7 @@ class ServerService : Service() {
 
         try {
             torProcess = processBuilder.start()
-            logInfo("Tor started")
+            logInfo("Tor started, PID: ${torProcess?.pid()}")
             Thread {
                 val reader = BufferedReader(InputStreamReader(torProcess!!.inputStream))
                 var line: String?

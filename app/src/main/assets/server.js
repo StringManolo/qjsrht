@@ -1,22 +1,22 @@
 // qjsrht Default Server with authentication and remote command execution
-// ADDRESS and PORT are injected automatically from config.json
-
 import express from './express.js';
-import * as std from 'std';  // Importar std para popen
+import * as std from 'std';
 
 const app = express();
 
 const AUTH_TOKEN = "__AUTH_TOKEN__";
 
-// Logging middleware
+// Logging middleware usando std.out.puts (garantiza escritura en stdout)
 app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+    std.out.puts(`[${new Date().toISOString()}] ${req.method} ${req.path}\n`);
+    std.out.flush();
     next();
 });
 
 // Endpoint público: información del servidor
 app.get('/', (req, res) => {
-    console.log("DEBUG: GET /");
+    std.out.puts("DEBUG: GET /\n");
+    std.out.flush();
     res.json({
         message: 'Welcome to qjsrht!',
         timestamp: new Date().toISOString(),
@@ -26,13 +26,15 @@ app.get('/', (req, res) => {
 
 // Endpoint público: health check
 app.get('/health', (req, res) => {
-    console.log("DEBUG: GET /health");
+    std.out.puts("DEBUG: GET /health\n");
+    std.out.flush();
     res.json({ status: 'ok', uptime: process.uptime || 0 });
 });
 
 // Endpoint público: echo
 app.post('/echo', (req, res) => {
-    console.log("DEBUG: POST /echo");
+    std.out.puts("DEBUG: POST /echo\n");
+    std.out.flush();
     res.json({
         received: req.body,
         headers: req.headers
@@ -41,7 +43,8 @@ app.post('/echo', (req, res) => {
 
 // Endpoint de ejemplo con parámetros
 app.get('/api/users/:id', (req, res) => {
-    console.log("DEBUG: GET /api/users/:id, id=" + req.params.id);
+    std.out.puts(`DEBUG: GET /api/users/${req.params.id}\n`);
+    std.out.flush();
     res.json({
         userId: req.params.id,
         name: 'Sample User',
@@ -51,46 +54,58 @@ app.get('/api/users/:id', (req, res) => {
 
 // Endpoint protegido: ejecutar comandos del sistema
 app.post('/exec', (req, res) => {
-    console.log("DEBUG 1: Entrando a /exec");
-    console.log("DEBUG: req.body =", req.body);
-    console.log("DEBUG: req.headers.authorization =", req.headers.authorization);
-    console.log("DEBUG: tipo de res.json =", typeof res.json);
-    console.log("DEBUG: tipo de res.send =", typeof res.send);
-    console.log("DEBUG: tipo de res.status =", typeof res.status);
+    std.out.puts("========== DEBUG /exec ==========\n");
+    std.out.puts(`req.body (raw): ${req.body}\n`);
+    std.out.puts(`typeof req.body: ${typeof req.body}\n`);
+    std.out.puts(`req.headers.authorization: ${req.headers.authorization}\n`);
+    std.out.puts(`req.headers.content-type: ${req.headers['content-type']}\n`);
+    std.out.flush();
 
-    // Autenticación manual
+    // Autenticación
     const auth = req.headers.authorization;
     if (!auth || !auth.startsWith('Bearer ') || auth.slice(7) !== AUTH_TOKEN) {
-        console.log("DEBUG 1.1 - No autorizado");
+        std.out.puts("ERROR: No autorizado\n");
+        std.out.flush();
         res.send(JSON.stringify({ error: 'Unauthorized' }));
         return;
     }
-    console.log("DEBUG 1.2 - Autorizado");
+    std.out.puts("Autorizado correctamente\n");
+    std.out.flush();
 
-    // Parsear el cuerpo JSON
+    // Parsear el cuerpo (puede ser string u objeto)
     let bodyObj;
     try {
-        bodyObj = JSON.parse(req.body);
-        console.log("DEBUG: bodyObj =", bodyObj);
+        if (typeof req.body === 'string') {
+            bodyObj = JSON.parse(req.body);
+        } else if (typeof req.body === 'object' && req.body !== null) {
+            bodyObj = req.body; // ya es objeto
+        } else {
+            throw new Error('req.body no es ni string ni objeto');
+        }
+        std.out.puts(`body parseado: ${JSON.stringify(bodyObj)}\n`);
+        std.out.flush();
     } catch (e) {
-        console.log("DEBUG: Error parsing JSON:", e.message);
-        res.send(JSON.stringify({ error: 'Invalid JSON' }));
+        std.out.puts(`ERROR parseando JSON: ${e.message}\n`);
+        std.out.flush();
+        res.send(JSON.stringify({ error: 'Invalid JSON', details: e.message }));
         return;
     }
 
     const { cmd } = bodyObj;
     if (!cmd || typeof cmd !== 'string') {
-        console.log("DEBUG: cmd missing or not string");
+        std.out.puts("ERROR: cmd missing or invalid\n");
+        std.out.flush();
         res.send(JSON.stringify({ error: 'Missing or invalid cmd' }));
         return;
     }
+    std.out.puts(`Comando a ejecutar: ${cmd}\n`);
+    std.out.flush();
 
-    console.log("DEBUG: cmd =", cmd);
-
-    // Ejecutar comando usando std.popen
+    // Ejecutar comando con std.popen
     try {
         const fullCmd = cmd + ' 2>&1';
-        console.log("DEBUG: Ejecutando con std.popen:", fullCmd);
+        std.out.puts(`Ejecutando: ${fullCmd}\n`);
+        std.out.flush();
         const fp = std.popen(fullCmd, 'r');
         let output = '';
         let line;
@@ -98,20 +113,24 @@ app.post('/exec', (req, res) => {
             output += line + '\n';
         }
         const status = fp.close();
-        console.log("DEBUG: Comando terminado con status", status);
-        console.log("DEBUG: output length =", output.length);
-
+        std.out.puts(`Comando ejecutado, status: ${status}\n`);
+        std.out.puts(`Salida (primeros 100 chars): ${output.substring(0, 100)}\n`);
+        std.out.flush();
         res.send(JSON.stringify({ output, status }));
     } catch (e) {
-        console.log("DEBUG: Excepción en ejecución:", e.message);
+        std.out.puts(`ERROR en ejecución: ${e.message}\n`);
+        std.out.flush();
         res.send(JSON.stringify({ error: e.message }));
     }
+    std.out.puts("========== FIN DEBUG /exec ==========\n");
+    std.out.flush();
 });
 
-// Manejador 404 (comentado temporalmente para pruebas)
+// Manejador 404 (comentado para pruebas)
 /*
 app.use((req, res) => {
-    console.log("DEBUG: 404 - No encontrado:", req.path);
+    std.out.puts(`DEBUG: 404 - ${req.path}\n`);
+    std.out.flush();
     res.status(404).json({
         error: 'Not Found',
         path: req.path
@@ -119,10 +138,10 @@ app.use((req, res) => {
 });
 */
 
-// Inicio del servidor (usando valores fijos para debug)
-//const ADDRESS = "127.0.0.1";
-//const PORT = 10000;
-console.log(`Starting server on ${ADDRESS}:${PORT}`);
+// Inicio del servidor (ADDRESS y PORT vendrán del runtime)
+std.out.puts(`Starting server on ${ADDRESS}:${PORT}\n`);
+std.out.flush();
 app.listen(PORT, ADDRESS, () => {
-    console.log(`Server running at ${ADDRESS}:${PORT}`);
+    std.out.puts(`Server running at ${ADDRESS}:${PORT}\n`);
+    std.out.flush();
 });
