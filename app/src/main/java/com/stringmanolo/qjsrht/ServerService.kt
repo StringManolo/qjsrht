@@ -212,11 +212,11 @@ class ServerService : Service() {
         val processBuilder = ProcessBuilder(qjsPath, "-m", serverPath)
         processBuilder.directory(appDir)
         processBuilder.environment()["LD_LIBRARY_PATH"] = appDir.absolutePath
-        processBuilder.redirectErrorStream(true)  // Combina stdout y stderr
+        processBuilder.redirectErrorStream(true)
 
         try {
             qjsProcess = processBuilder.start()
-            logInfo("QuickJS started, PID: ${qjsProcess?.pid()}")
+            logInfo("QuickJS started")  // Eliminado PID
 
             // Hilo lector con logs de depuración
             Thread {
@@ -253,7 +253,7 @@ class ServerService : Service() {
 
         try {
             torProcess = processBuilder.start()
-            logInfo("Tor started, PID: ${torProcess?.pid()}")
+            logInfo("Tor started")  // Eliminado PID
             Thread {
                 val reader = BufferedReader(InputStreamReader(torProcess!!.inputStream))
                 var line: String?
