@@ -1,0 +1,78 @@
+Make a Kotlin apk using this template as base: https://github.com/stringmanolo/kotlinapktemplate
+
+
+
+The apk will target android:maxSdkVersion="28" so apks can run binaries directly like in this apk:
+
+https://github.com/StringManolo/DarkMessengerAndroid/tree/feature/hidden-service-http-server
+
+
+
+Then we need to compile quickjs lastest version for both armeabi32 and aarch64. 
+
+
+
+We also need to compile this module for quickjs that adds network support for armeabi32 and aarch64 https://github.com/StringManolo/qjsNetworkSockets
+
+And add this express.js file https://github.com/StringManolo/qjsNetworkSockets/blob/main/extra/express.js
+
+so a simple server can be made like this:
+
+https://github.com/StringManolo/qjsNetworkSockets/blob/main/examples/testExpress.js
+
+
+
+Also we need to add tor bins for armeabi32 and aarch64 in the same way, this example does it:
+
+https://github.com/StringManolo/DarkMessengerAndroid/tree/feature/hidden-service-http-server
+
+
+
+Then we need the app to autostart on boot.
+
+
+
+The app will do the next as soon as starts:
+
+Bind the express.js server to the port and address specified by the user on build time. 
+
+(The build is made by a github actions workflow). The adress can be local, or normal or tor onion address (if the user choses to use an onion address in built time, a hidden service is created just to get a random onion address) then the files needed for that onion address (like cryotography keys and tor config file used) are transfered to the apk to it can run the hidden service and the express.js. 
+
+
+
+For you to understabd the proyect, after doing all this, we will get a Kotlin APK that creates a express.js http service bindeded where the user can/choses to bind it with really low RAM usage and 8 times faster to process requests than a node express server for simple apis.
+
+
+
+All the project should be compiled by worflow_x.yml with github actions (so it can be compiled from everywhere).
+
+
+
+The project name is: qjsrht (extands for QuickJSRapidHttpTemplate)
+
+
+A configuration file in the repo should indicate address/port/onion
+
+
+
+The workflow should run Tor to create the hidden service and get the keys and address. Then the worflow should echo the onion address so the user can see in the build logs what onion address is being used. Message should say: "DEBUG-ONION: xxxxxxx.onion" 
+
+
+
+Users should be able to modify server.js before building. 
+
+
+
+The AP donsn't have UI, is just a service.
+
+
+
+The files should be keept in assets.
+
+
+
+If the apk is build as "debug" being debug/production an option in the config file, it should have an UI with logs. If production is chosen, no UI and no logs.
+
+
+
+No need for x86_64 bins, just armeabi32 and aarch64. 

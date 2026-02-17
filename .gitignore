@@ -1,0 +1,49 @@
+# Android build files
+*.iml
+.gradle
+/local.properties
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+*.ap_
+*.aab
+
+# Gradle
+.gradle/
+build/
+
+# Local configuration files
+local.properties
+
+# Android Studio
+*.iml
+.idea/
+.navigation/
+captures/
+output.json
+
+# NDK
+obj/
+
+# Built binaries (generated during CI build)
+app/src/main/assets/arm32/qjs
+app/src/main/assets/arm32/qjsnet.so
+app/src/main/assets/arm32/tor
+app/src/main/assets/arm64/qjs
+app/src/main/assets/arm64/qjsnet.so
+app/src/main/assets/arm64/tor
+app/src/main/assets/express.js
+app/src/main/assets/tor/
+
+# Tor files
+tor-hs/
+tor-download/
+
+# Build artifacts
+dist/
+*.so
+*.o

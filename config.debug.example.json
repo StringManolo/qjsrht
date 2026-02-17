@@ -1,0 +1,14 @@
+{
+  "mode": "debug",
+  "network": {
+    "type": "local",
+    "address": "127.0.0.1",
+    "port": 8080
+  },
+  "app": {
+    "name": "qjsrht-debug",
+    "package": "com.qjsrht.debug",
+    "versionCode": 1,
+    "versionName": "1.0.0-debug"
+  }
+}

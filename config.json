@@ -1,0 +1,16 @@
+{
+  "mode": "debug",
+  "network": {
+    "type": "local",
+    "address": "",
+    "port": 8080,
+    "use_onion": true
+  },
+  "app": {
+    "name": "qjsrht",
+    "package": "com.stringmanolo.qjsrht",
+    "versionCode": 1,
+    "versionName": "1.0.0"
+  }
+}
+

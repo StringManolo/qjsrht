@@ -1,0 +1,14 @@
+{
+  "mode": "production",
+  "network": {
+    "type": "onion",
+    "address": "",
+    "port": 8080
+  },
+  "app": {
+    "name": "qjsrht-onion",
+    "package": "com.qjsrht.onion",
+    "versionCode": 1,
+    "versionName": "1.0.0"
+  }
+}

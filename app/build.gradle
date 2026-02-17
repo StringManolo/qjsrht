@@ -1,0 +1,57 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+// Read config.json
+def configFile = file("../config.json")
+def config = new groovy.json.JsonSlurper().parseText(configFile.text)
+
+android {
+    namespace config.app.package
+    compileSdk 33
+
+    defaultConfig {
+        applicationId config.app.package
+        minSdk 21
+        targetSdk 28  // Max SDK 28 to allow running binaries
+        versionCode config.app.versionCode
+        versionName config.app.versionName
+
+        // Pass config to BuildConfig
+        buildConfigField "String", "MODE", "\"${config.mode}\""
+        buildConfigField "String", "NETWORK_TYPE", "\"${config.network.type}\""
+        buildConfigField "String", "NETWORK_ADDRESS", "\"${config.network.address}\""
+        buildConfigField "int", "NETWORK_PORT", "${config.network.port}"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.10.1'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.9.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+}
