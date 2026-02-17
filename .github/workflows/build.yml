@@ -61,6 +61,8 @@ jobs:
         cd build/quickjs-src
         wget https://bellard.org/quickjs/quickjs-2024-01-13.tar.xz
         tar xf quickjs-2024-01-13.tar.xz --strip-components=1
+        echo "Contenido de build/quickjs-src:"
+        ls -la
 
     # Compilar QuickJS para ARM64 (dinámico)
     - name: Compile QuickJS for ARM64
@@ -125,27 +127,40 @@ jobs:
         cp qjs ../../app/src/main/assets/arm32/
         chmod +x ../../app/src/main/assets/arm32/qjs
 
-    # Compilar qjsNetworkSockets para ARM32
-    - name: Clone and compile qjsNetworkSockets for ARM32
+    # Clonar qjsNetworkSockets (solo una vez)
+    - name: Clone qjsNetworkSockets
       run: |
         mkdir -p build
         cd build
         git clone https://github.com/StringManolo/qjsNetworkSockets.git
-        cd qjsNetworkSockets
+
+    # Verificar que quickjs.h existe antes de compilar
+    - name: Verify quickjs.h location
+      run: |
+        echo "Contenido de build/quickjs-src:"
+        ls -la build/quickjs-src/
+        echo "Buscando quickjs.h:"
+        find build -name "quickjs.h" || echo "No encontrado"
+
+    # Compilar qjsNetworkSockets para ARM32 (con ruta absoluta)
+    - name: Compile qjsNetworkSockets for ARM32
+      run: |
+        cd build/qjsNetworkSockets
 
         export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
         export CC="$TOOLCHAIN/armv7a-linux-androideabi21-clang"
         export STRIP="$TOOLCHAIN/llvm-strip"
 
+        # Usar ruta absoluta para los headers
         $CC -shared -fPIC -o qjsnet.so src/qjs_sockets.c \
-          -I../../quickjs-src \
+          -I$GITHUB_WORKSPACE/build/quickjs-src \
           -Os
 
         $STRIP qjsnet.so
-        cp qjsnet.so ../../app/src/main/assets/arm32/
+        cp qjsnet.so $GITHUB_WORKSPACE/app/src/main/assets/arm32/
 
-    # Compilar qjsNetworkSockets para ARM64
-    - name: Clone and compile qjsNetworkSockets for ARM64
+    # Compilar qjsNetworkSockets para ARM64 (con ruta absoluta)
+    - name: Compile qjsNetworkSockets for ARM64
       run: |
         cd build/qjsNetworkSockets
 
@@ -154,13 +169,13 @@ jobs:
         export STRIP="$TOOLCHAIN/llvm-strip"
 
         $CC -shared -fPIC -o qjsnet.so src/qjs_sockets.c \
-          -I../../quickjs-src \
+          -I$GITHUB_WORKSPACE/build/quickjs-src \
           -Os
 
         $STRIP qjsnet.so
-        cp qjsnet.so ../../app/src/main/assets/arm64/
+        cp qjsnet.so $GITHUB_WORKSPACE/app/src/main/assets/arm64/
 
-    # Parchear express.js con el import correcto (¡clave!)
+    # Parchear express.js con el import correcto
     - name: Patch express.js import
       run: |
         sed -i 's|import sockets from '\''../dist/network_sockets.so'\'';|import sockets from '\''./qjsnet.so'\'';|' build/qjsNetworkSockets/extra/express.js
