@@ -28,8 +28,6 @@ class ServerService : Service() {
         super.onCreate()
         createNotificationChannel()
         logFile = File(filesDir, "logs.txt")
-        // Limpiar logs al iniciar el servicio (opcional)
-        // logFile.writeText("")
         logDebug("Service created")
         loadConfig()
     }
@@ -38,9 +36,11 @@ class ServerService : Service() {
         try {
             val time = dateFormat.format(Date())
             val line = "$time $level/$tag: $msg\n"
-            logFile.appendText(line)
+            // Usar FileOutputStream en modo append para compatibilidad con API 21
+            FileOutputStream(logFile, true).use { fos ->
+                fos.write(line.toByteArray())
+            }
         } catch (e: Exception) {
-            // Si falla, al menos usar Log
             Log.e(TAG, "Error writing to log file: ${e.message}")
         }
     }
@@ -174,9 +174,9 @@ class ServerService : Service() {
         // Dar permisos de ejecución a qjs
         File(appDir, "qjs").setExecutable(true)
 
-        // Verificar que los archivos están
+        // Verificar que los archivos están (¡CORREGIDO!)
         logDebug("Files in app dir after extraction:")
-        File(appDir).listFiles()?.forEach {
+        appDir.listFiles()?.forEach {
             logDebug("  ${it.name} (${if (it.canExecute()) "executable" else "not executable"})")
         }
 
@@ -275,8 +275,6 @@ class ServerService : Service() {
                     logToFile("I", "QJS", line!!)
                 }
             }.start()
-
-            // También capturar flujo de error por si acaso (aunque redirectErrorStream=true los combina)
         } catch (e: Exception) {
             logError("Failed to start QuickJS", e)
         }
