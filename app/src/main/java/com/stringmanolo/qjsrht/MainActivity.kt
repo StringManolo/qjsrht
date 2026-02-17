@@ -6,6 +6,7 @@ import android.os.Build
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
@@ -14,29 +15,36 @@ class MainActivity : AppCompatActivity() {
     private lateinit var scrollView: ScrollView
     private var logThread: Thread? = null
     private var isRunning = true
+    private lateinit var config: JSONObject
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // If production mode, don't show UI
-        if (BuildConfig.MODE == "production") {
-            // Start service and finish activity
+        // Cargar configuración desde assets
+        loadConfig()
+
+        val mode = config.getString("mode")
+
+        // Si es modo production, no mostrar UI
+        if (mode == "production") {
             startServerService()
             finish()
             return
         }
 
-        // Debug mode - show logs UI
+        // Modo debug - mostrar UI de logs
         setContentView(R.layout.activity_main)
-        
+
         logTextView = findViewById(R.id.logTextView)
         scrollView = findViewById(R.id.scrollView)
 
-        // Start the server service
         startServerService()
-
-        // Start reading logs
         startLogReader()
+    }
+
+    private fun loadConfig() {
+        val jsonString = assets.open("config.json").bufferedReader().use { it.readText() }
+        config = JSONObject(jsonString)
     }
 
     private fun startServerService() {
@@ -53,7 +61,7 @@ class MainActivity : AppCompatActivity() {
             try {
                 val process = Runtime.getRuntime().exec("logcat -v time ServerService:V *:S")
                 val reader = BufferedReader(InputStreamReader(process.inputStream))
-                
+
                 var line: String?
                 while (isRunning && reader.readLine().also { line = it } != null) {
                     runOnUiThread {

@@ -1,4 +1,4 @@
-package com.qjsrht
+package com.stringmanolo.qjsrht
 
 import android.content.BroadcastReceiver
 import android.content.Context

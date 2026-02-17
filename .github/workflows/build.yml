@@ -206,6 +206,9 @@ jobs:
         HiddenServicePort ${{ steps.config.outputs.network_port }} 127.0.0.1:${{ steps.config.outputs.network_port }}
         EOF
 
+    - name: Copy config.json to assets
+      run: cp config.json app/src/main/assets/
+
     - name: Build APK (Debug)
       if: steps.config.outputs.mode == 'debug'
       run: gradle assembleDebug --stacktrace

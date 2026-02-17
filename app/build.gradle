@@ -3,7 +3,7 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
-// Read config.json
+// Leer config.json para namespace y versiones (opcional)
 def configFile = file("../config.json")
 def config = new groovy.json.JsonSlurper().parseText(configFile.text)
 
@@ -14,15 +14,11 @@ android {
     defaultConfig {
         applicationId config.app.package
         minSdk 21
-        targetSdk 28  // Max SDK 28 to allow running binaries
+        targetSdk 28
         versionCode config.app.versionCode
         versionName config.app.versionName
 
-        // Pass config to BuildConfig
-        buildConfigField "String", "MODE", "\"${config.mode}\""
-        buildConfigField "String", "NETWORK_TYPE", "\"${config.network.type}\""
-        buildConfigField "String", "NETWORK_ADDRESS", "\"${config.network.address}\""
-        buildConfigField "int", "NETWORK_PORT", "${config.network.port}"
+        // Eliminados buildConfigField porque ahora leemos JSON desde assets
     }
 
     buildTypes {
@@ -45,7 +41,7 @@ android {
     }
 
     buildFeatures {
-        buildConfig = true
+        buildConfig = true  // Se puede dejar, pero ya no se usará para nuestros campos
     }
 }
 

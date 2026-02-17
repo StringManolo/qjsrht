@@ -9,6 +9,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 
@@ -17,21 +18,27 @@ class ServerService : Service() {
     private var qjsProcess: Process? = null
     private var torProcess: Process? = null
     private val CHANNEL_ID = "ServerServiceChannel"
+    private lateinit var config: JSONObject
 
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "Service created")
         createNotificationChannel()
+        loadConfig()
+    }
+
+    private fun loadConfig() {
+        val jsonString = assets.open("config.json").bufferedReader().use { it.readText() }
+        config = JSONObject(jsonString)
+        Log.d(TAG, "Config loaded: $config")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "Service started")
-        
-        // Start as foreground service
+
         val notification = createNotification()
         startForeground(1, notification)
 
-        // Extract and run in background thread
         Thread {
             try {
                 extractAssets()
@@ -51,7 +58,6 @@ class ServerService : Service() {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
         }
-        
         return builder
             .setContentTitle("qjsrht Server")
             .setContentText("QuickJS HTTP server is running")
@@ -75,23 +81,23 @@ class ServerService : Service() {
         Log.d(TAG, "Extracting assets...")
         val appDir = filesDir
         val arch = getArchitecture()
-        
+        val networkType = config.getJSONObject("network").getString("type")
+
         Log.d(TAG, "Architecture: $arch")
 
         // Extract binaries
         extractAsset("$arch/qjs", File(appDir, "qjs"))
         extractAsset("$arch/qjsnet.so", File(appDir, "qjsnet.so"))
-        
+
         // Extract JavaScript files
         extractAsset("express.js", File(appDir, "express.js"))
         extractAsset("server.js", File(appDir, "server.js"))
 
         // If onion mode, extract Tor
-        if (BuildConfig.NETWORK_TYPE == "onion") {
+        if (networkType == "onion") {
             extractAsset("$arch/tor", File(appDir, "tor"))
             extractAsset("tor/torrc", File(appDir, "torrc"))
-            
-            // Extract hidden service files if they exist
+
             try {
                 val hsDir = File(appDir, "hidden_service")
                 hsDir.mkdirs()
@@ -105,7 +111,7 @@ class ServerService : Service() {
 
         // Set execute permissions
         File(appDir, "qjs").setExecutable(true)
-        if (BuildConfig.NETWORK_TYPE == "onion") {
+        if (networkType == "onion") {
             File(appDir, "tor").setExecutable(true)
         }
 
@@ -126,25 +132,26 @@ class ServerService : Service() {
         return when {
             abi.contains("arm64") || abi.contains("aarch64") -> "arm64"
             abi.contains("armeabi") -> "arm32"
-            else -> "arm32" // fallback
+            else -> "arm32"
         }
     }
 
     private fun startServer() {
         Log.d(TAG, "Starting server...")
         val appDir = filesDir
+        val networkObj = config.getJSONObject("network")
+        val networkType = networkObj.getString("type")
+        val networkAddress = networkObj.getString("address")
+        val networkPort = networkObj.getInt("port")
+        val mode = config.getString("mode")
 
-        // If onion mode, start Tor first
-        if (BuildConfig.NETWORK_TYPE == "onion") {
-            startTor(appDir)
-            // Wait for Tor to be ready
+        if (networkType == "onion") {
+            startTor(appDir, mode)
             Thread.sleep(10000)
         }
 
-        // Prepare environment
-        val address = when (BuildConfig.NETWORK_TYPE) {
+        val address = when (networkType) {
             "onion" -> {
-                // Read onion address from hostname file
                 val hostnameFile = File(appDir, "hidden_service/hostname")
                 if (hostnameFile.exists()) {
                     hostnameFile.readText().trim()
@@ -152,38 +159,31 @@ class ServerService : Service() {
                     "unknown.onion"
                 }
             }
-            else -> BuildConfig.NETWORK_ADDRESS
+            else -> networkAddress
         }
-
-        val port = BuildConfig.NETWORK_PORT
+        val port = networkPort
 
         Log.d(TAG, "Server will bind to: $address:$port")
 
-        // Create modified server.js with address and port
         val serverJsContent = File(appDir, "server.js").readText()
         val modifiedContent = "const ADDRESS = '$address';\nconst PORT = $port;\n" + serverJsContent
         File(appDir, "server_run.js").writeText(modifiedContent)
 
-        // Run QuickJS
         val qjsPath = File(appDir, "qjs").absolutePath
         val serverPath = File(appDir, "server_run.js").absolutePath
-        val qjsnetPath = File(appDir, "qjsnet.so").absolutePath
 
         val processBuilder = ProcessBuilder(qjsPath, "-m", serverPath)
         processBuilder.directory(appDir)
-        
         val env = processBuilder.environment()
         env["LD_LIBRARY_PATH"] = appDir.absolutePath
-        
-        // Redirect output to logcat if debug mode
-        if (BuildConfig.MODE == "debug") {
+
+        if (mode == "debug") {
             processBuilder.redirectErrorStream(true)
         }
 
         qjsProcess = processBuilder.start()
 
-        // Read output if debug mode
-        if (BuildConfig.MODE == "debug") {
+        if (mode == "debug") {
             Thread {
                 qjsProcess?.inputStream?.bufferedReader()?.use { reader ->
                     reader.lineSequence().forEach { line ->
@@ -196,9 +196,9 @@ class ServerService : Service() {
         Log.d(TAG, "QuickJS started")
     }
 
-    private fun startTor(appDir: File) {
+    private fun startTor(appDir: File, mode: String) {
         Log.d(TAG, "Starting Tor...")
-        
+
         val torPath = File(appDir, "tor").absolutePath
         val torrcPath = File(appDir, "torrc").absolutePath
         val dataDir = File(appDir, "tor_data")
@@ -210,15 +210,14 @@ class ServerService : Service() {
             "--DataDirectory", dataDir.absolutePath
         )
         processBuilder.directory(appDir)
-        
-        if (BuildConfig.MODE == "debug") {
+
+        if (mode == "debug") {
             processBuilder.redirectErrorStream(true)
         }
 
         torProcess = processBuilder.start()
 
-        // Read Tor output if debug mode
-        if (BuildConfig.MODE == "debug") {
+        if (mode == "debug") {
             Thread {
                 torProcess?.inputStream?.bufferedReader()?.use { reader ->
                     reader.lineSequence().forEach { line ->
@@ -238,7 +237,5 @@ class ServerService : Service() {
         torProcess?.destroy()
     }
 
-    override fun onBind(intent: Intent?): IBinder? {
-        return null
-    }
+    override fun onBind(intent: Intent?): IBinder? = null
 }
