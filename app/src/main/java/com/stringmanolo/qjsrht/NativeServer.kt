@@ -5,6 +5,7 @@ import android.content.Context
 import android.database.Cursor
 import android.location.Location
 import android.location.LocationManager
+import android.os.Build
 import android.provider.*
 import android.util.Log
 import com.google.gson.Gson
@@ -20,16 +21,20 @@ class NativeServer(private val context: Context) {
     private var respWriter: PrintWriter? = null
 
     fun start() {
-        reqFifo = File(context.filesDir, "native_req")
-        respFifo = File(context.filesDir, "native_resp")
-        // Remove old FIFOs
+        val filesDir = context.filesDir.absolutePath
+        reqFifo = File(filesDir, "native_req")
+        respFifo = File(filesDir, "native_resp")
+
+        // Remove old FIFOs if they exist
         reqFifo.delete()
         respFifo.delete()
 
-        // Create FIFOs using mkfifo (common on Android)
+        // Create FIFOs using mkfifo command
         try {
-            Runtime.getRuntime().exec(arrayOf("mkfifo", reqFifo.absolutePath)).waitFor()
-            Runtime.getRuntime().exec(arrayOf("mkfifo", respFifo.absolutePath)).waitFor()
+            val processReq = ProcessBuilder("mkfifo", reqFifo.absolutePath).start()
+            processReq.waitFor()
+            val processResp = ProcessBuilder("mkfifo", respFifo.absolutePath).start()
+            processResp.waitFor()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create FIFOs", e)
             return
@@ -38,7 +43,26 @@ class NativeServer(private val context: Context) {
         Thread {
             try {
                 Log.i(TAG, "Waiting for connection on FIFOs...")
-                // Open in correct order to avoid deadlock
+                // Open in correct order to avoid deadlock:
+                // Open for reading first, then writing? Actually we need to open both ends.
+                // To avoid deadlock, we can open one end in a separate thread, but here we'll open sequentially.
+                // Standard approach: open read end of resp FIFO first? Actually the order is:
+                // - Writer opens write end of req FIFO (blocks until reader opens read end)
+                // - Reader opens read end of resp FIFO (blocks until writer opens write end)
+                // To avoid deadlock, we need to open them in a way that doesn't block each other.
+                // We can open both in non-blocking mode? But FIFOs on Android might not support non-blocking easily.
+                // Simpler: open in separate threads. But here we are already in a thread, so we can do:
+                // 1. Open reqFifo for reading (this will block until someone opens it for writing)
+                // 2. Then open respFifo for writing (this will block until someone opens it for reading)
+                // The other side (server.js) will open respFifo for reading and reqFifo for writing.
+                // So we need to open in reverse order: first open respFifo for writing? Let's think:
+                // server.js does: nativeReqFd = std.open(reqPath, 'w'); (opens write end of req)
+                // and nativeRespFd = std.open(respPath, 'r'); (opens read end of resp)
+                // So here we need: open reqFifo for reading, and respFifo for writing.
+                // Order: if we open reqFifo for reading first, it will block until server.js opens it for writing.
+                // Then we open respFifo for writing, which will block until server.js opens it for reading.
+                // That works sequentially because server.js will open both in its own order.
+                // But server.js opens reqFifo first, then respFifo. So if we open reqFifo for reading first, it will unblock when server.js opens it for writing. Then we open respFifo for writing, which will unblock when server.js opens it for reading. That's fine.
                 val reqInput = FileInputStream(reqFifo).bufferedReader()
                 val respOutput = FileOutputStream(respFifo).printWriter()
                 reqReader = reqInput
@@ -57,6 +81,8 @@ class NativeServer(private val context: Context) {
             } finally {
                 reqReader?.close()
                 respWriter?.close()
+                reqFifo.delete()
+                respFifo.delete()
             }
         }.start()
     }
