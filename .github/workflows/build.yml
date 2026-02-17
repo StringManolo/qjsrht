@@ -10,11 +10,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
-    
+
     - name: Read configuration
       id: config
       run: |
@@ -23,38 +23,43 @@ jobs:
         NETWORK_ADDRESS=$(jq -r '.network.address' config.json)
         NETWORK_PORT=$(jq -r '.network.port' config.json)
         APP_NAME=$(jq -r '.app.name' config.json)
-        
+
         echo "mode=$MODE" >> $GITHUB_OUTPUT
         echo "network_type=$NETWORK_TYPE" >> $GITHUB_OUTPUT
         echo "network_address=$NETWORK_ADDRESS" >> $GITHUB_OUTPUT
         echo "network_port=$NETWORK_PORT" >> $GITHUB_OUTPUT
         echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
-        
+
         echo "Configuration loaded:"
         echo "  Mode: $MODE"
         echo "  Network Type: $NETWORK_TYPE"
         echo "  Address: $NETWORK_ADDRESS"
         echo "  Port: $NETWORK_PORT"
-    
+
     - name: Set up JDK 17
       uses: actions/setup-java@v3
       with:
         java-version: '17'
         distribution: 'temurin'
-    
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: '8.5'
+
     - name: Setup Android SDK
       uses: android-actions/setup-android@v2
-    
+
     - name: Install NDK
       run: |
         echo "y" | sdkmanager "ndk;25.2.9519653"
         echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
-    
+
     - name: Install build dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential wget git curl jq tor
-    
+
     - name: Download and compile QuickJS for ARM32
       run: |
         mkdir -p build/quickjs-arm32
@@ -62,22 +67,22 @@ jobs:
         wget https://bellard.org/quickjs/quickjs-2024-01-13.tar.xz
         tar xf quickjs-2024-01-13.tar.xz
         cd quickjs-2024-01-13
-        
+
         # Configure for ARM32
         export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
         export CC="$TOOLCHAIN/bin/armv7a-linux-androideabi21-clang"
         export AR="$TOOLCHAIN/bin/llvm-ar"
         export STRIP="$TOOLCHAIN/bin/llvm-strip"
-        
+
         # Build
         make qjs EXTRA_CFLAGS="-DCONFIG_BIGNUM=0 -Os" EXTRA_LDFLAGS="-static"
-        
+
         # Copy binary
         mkdir -p ../../../app/src/main/assets/arm32
         $STRIP qjs
         cp qjs ../../../app/src/main/assets/arm32/
         chmod +x ../../../app/src/main/assets/arm32/qjs
-    
+
     - name: Download and compile QuickJS for ARM64
       run: |
         mkdir -p build/quickjs-arm64
@@ -85,94 +90,93 @@ jobs:
         wget https://bellard.org/quickjs/quickjs-2024-01-13.tar.xz
         tar xf quickjs-2024-01-13.tar.xz
         cd quickjs-2024-01-13
-        
+
         # Configure for ARM64
         export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
         export CC="$TOOLCHAIN/bin/aarch64-linux-android21-clang"
         export AR="$TOOLCHAIN/bin/llvm-ar"
         export STRIP="$TOOLCHAIN/bin/llvm-strip"
-        
+
         # Build
-        make qjs EXTRA_CFLAGS="-DCONFIG_BIGNUM=0 -Os" EXTRA_LDFLAGS="-static"
-        
+        make qjs EXTRA_CFLAGS="-DCONFIG_BIGNUM=0 -Os" EXTRA_LDFLAGS="-static"           
         # Copy binary
         mkdir -p ../../../app/src/main/assets/arm64
         $STRIP qjs
         cp qjs ../../../app/src/main/assets/arm64/
         chmod +x ../../../app/src/main/assets/arm64/qjs
-    
+
     - name: Clone and compile qjsNetworkSockets for ARM32
       run: |
         mkdir -p build
         cd build
         git clone https://github.com/StringManolo/qjsNetworkSockets.git
         cd qjsNetworkSockets
-        
+
         # Compile for ARM32
         export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
         export CC="$TOOLCHAIN/bin/armv7a-linux-androideabi21-clang"
         export STRIP="$TOOLCHAIN/bin/llvm-strip"
-        
+
         $CC -shared -fPIC -o qjsnet.so src/qjs_sockets.c \
           -I../quickjs-arm32/quickjs-2024-01-13 \
           -Os
-        
+
         $STRIP qjsnet.so
         cp qjsnet.so ../../app/src/main/assets/arm32/
-    
+
     - name: Clone and compile qjsNetworkSockets for ARM64
       run: |
         cd build/qjsNetworkSockets
-        
+
         # Compile for ARM64
         export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
         export CC="$TOOLCHAIN/bin/aarch64-linux-android21-clang"
         export STRIP="$TOOLCHAIN/bin/llvm-strip"
-        
+
         $CC -shared -fPIC -o qjsnet.so src/qjs_sockets.c \
           -I../quickjs-arm64/quickjs-2024-01-13 \
           -Os
-        
+
         $STRIP qjsnet.so
         cp qjsnet.so ../../app/src/main/assets/arm64/
-    
+
     - name: Copy express.js
       run: |
         cp build/qjsNetworkSockets/extra/express.js app/src/main/assets/
-    
+
     - name: Download Tor binaries for ARM (if onion mode)
       if: steps.config.outputs.network_type == 'onion'
       run: |
         # Download pre-compiled Tor for Android
         mkdir -p tor-download
         cd tor-download
-        
+
         # ARM32
         wget https://github.com/StringManolo/TB4A/releases/download/V1.0.0/tor-armeabi-v7a
         cp tor-armeabi-v7a ../app/src/main/assets/arm32/tor
         chmod +x ../app/src/main/assets/arm32/tor
-        
+
         # ARM64
         wget https://github.com/StringManolo/TB4A/releases/download/V1.0.0/tor-arm64-v8a
         cp tor-arm64-v8a ../app/src/main/assets/arm64/tor
         chmod +x ../app/src/main/assets/arm64/tor
-    
+
     - name: Generate Tor hidden service (if onion mode)
       if: steps.config.outputs.network_type == 'onion'
       run: |
         mkdir -p tor-hs
-        
+
         # Create torrc for hidden service
         cat > tor-hs/torrc << EOF
         SOCKSPort 0
         HiddenServiceDir /tmp/hidden_service
         HiddenServicePort ${{ steps.config.outputs.network_port }} 127.0.0.1:${{ steps.config.outputs.network_port }}
         EOF
-        
+
         # Start Tor to generate keys
         tor -f tor-hs/torrc &
         TOR_PID=$!
-        
+
         # Wait for hidden service to be created
         echo "Waiting for Tor to generate hidden service..."
         for i in {1..30}; do
@@ -181,61 +185,49 @@ jobs:
           fi
           sleep 1
         done
-        
+
         # Read the onion address
         if [ -f /tmp/hidden_service/hostname ]; then
           ONION_ADDRESS=$(cat /tmp/hidden_service/hostname)
           echo "DEBUG-ONION: $ONION_ADDRESS"
           echo "onion_address=$ONION_ADDRESS" >> $GITHUB_ENV
         fi
-        
+
         # Stop Tor
         kill $TOR_PID || true
-        
+
         # Copy hidden service files to assets
         mkdir -p app/src/main/assets/tor/hidden_service
-        cp /tmp/hidden_service/* app/src/main/assets/tor/hidden_service/
-        
+        cp /tmp/hidden_service/* app/src/main/assets/tor/hidden_service/                
         # Create torrc for the app
         cat > app/src/main/assets/tor/torrc << EOF
         SOCKSPort 0
         HiddenServiceDir hidden_service
         HiddenServicePort ${{ steps.config.outputs.network_port }} 127.0.0.1:${{ steps.config.outputs.network_port }}
         EOF
-    
-    - name: Make gradlew executable
-      run: chmod +x gradlew || echo "gradlew not found, will use gradle wrapper"
-    
-    - name: Create gradle wrapper if not exists
-      run: |
-        if [ ! -f gradlew ] || [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-          # gradle wrapper 
-          gradle wrapper --gradle-version 8.4 --distribution-type bin
-          chmod +x gradlew
-        fi
-    
+
     - name: Build APK (Debug)
       if: steps.config.outputs.mode == 'debug'
-      run: ./gradlew assembleDebug --stacktrace
-    
+      run: gradle assembleDebug --stacktrace
+
     - name: Build APK (Release)
       if: steps.config.outputs.mode == 'production'
-      run: ./gradlew assembleRelease --stacktrace
-    
+      run: gradle assembleRelease --stacktrace
+
     - name: Upload Debug APK
       if: steps.config.outputs.mode == 'debug'
       uses: actions/upload-artifact@v4
       with:
         name: app-debug-apk
         path: app/build/outputs/apk/debug/app-debug.apk
-    
+
     - name: Upload Release APK
       if: steps.config.outputs.mode == 'production'
       uses: actions/upload-artifact@v4
       with:
         name: app-release-apk
         path: app/build/outputs/apk/release/app-release-unsigned.apk
-    
+
     - name: Build summary
       run: |
         echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
