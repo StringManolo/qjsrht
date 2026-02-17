@@ -52,7 +52,7 @@ jobs:
     - name: Install build dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential wget git curl jq tor
+        sudo apt-get install -y build-essential wget git curl jq tor bc
 
     # Descargar fuente de QuickJS (una vez)
     - name: Download QuickJS source
@@ -71,20 +71,23 @@ jobs:
         export CC="$TOOLCHAIN/${HOST_TRIPLE}${API}-clang"
         export AR="$TOOLCHAIN/llvm-ar"
         export STRIP="$TOOLCHAIN/llvm-strip"
+        export RANLIB="$TOOLCHAIN/llvm-ranlib"
 
-        # Compilar nativo para generar qjsc (necesario para make)
+        # Compilar nativo para generar qjsc (si no está ya hecho)
         cd build/quickjs-src
-        make -j$(nproc)  # Esto genera qjsc nativo
+        make -j$(nproc) qjsc  # Solo qjsc, no todo
 
-        # Crear directorio para compilación cruzada
+        # Crear directorio limpio para compilación cruzada
         mkdir -p ../quickjs-cross-arm64
         cp -r . ../quickjs-cross-arm64
         cd ../quickjs-cross-arm64
+        make clean  # Eliminar cualquier objeto previo
 
         # Compilar qjs dinámico
         make qjs \
           CC="$CC" \
           AR="$AR" \
+          RANLIB="$RANLIB" \
           QJSC="../quickjs-src/qjsc" \
           LDFLAGS="-pthread" \
           LIBS="-lm -ldl" \
@@ -104,14 +107,17 @@ jobs:
         export CC="$TOOLCHAIN/${HOST_TRIPLE}${API}-clang"
         export AR="$TOOLCHAIN/llvm-ar"
         export STRIP="$TOOLCHAIN/llvm-strip"
+        export RANLIB="$TOOLCHAIN/llvm-ranlib"
 
         mkdir -p build/quickjs-cross-arm32
         cp -r build/quickjs-src/* build/quickjs-cross-arm32/
         cd build/quickjs-cross-arm32
+        make clean
 
         make qjs \
           CC="$CC" \
           AR="$AR" \
+          RANLIB="$RANLIB" \
           QJSC="../quickjs-src/qjsc" \
           LDFLAGS="-pthread" \
           LIBS="-lm -ldl" \
