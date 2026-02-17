@@ -7,12 +7,12 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import org.json.JSONObject
 import java.io.*
-import java.text.SimpleDateFormat
-import java.util.*
 
 class ServerService : Service() {
     private val TAG = "ServerService"
@@ -21,49 +21,41 @@ class ServerService : Service() {
     private val CHANNEL_ID = "ServerServiceChannel"
     private lateinit var config: JSONObject
     private var mode: String = "debug"
-    private lateinit var logFile: File
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
 
-    override fun onCreate() {
-        super.onCreate()
-        createNotificationChannel()
-        logFile = File(filesDir, "logs.txt")
-        logDebug("Service created")
-        loadConfig()
+    // Para enviar logs a la actividad
+    companion object {
+        var logListener: ((String) -> Unit)? = null
+        private val handler = Handler(Looper.getMainLooper())
     }
 
-    private fun logToFile(level: String, tag: String, msg: String) {
-        try {
-            val time = dateFormat.format(Date())
-            val line = "$time $level/$tag: $msg\n"
-            // Usar FileOutputStream en modo append para compatibilidad con API 21
-            FileOutputStream(logFile, true).use { fos ->
-                fos.write(line.toByteArray())
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error writing to log file: ${e.message}")
+    private fun logToUI(msg: String) {
+        logListener?.let { listener ->
+            handler.post { listener(msg) }
         }
+        // También a Logcat
+        Log.d(TAG, msg)
     }
 
     private fun logDebug(msg: String) {
-        val fullMsg = "$msg"
-        Log.d(TAG, fullMsg)
         if (mode == "debug") {
-            logToFile("D", TAG, fullMsg)
+            logToUI("D/$TAG: $msg")
         }
     }
 
     private fun logInfo(msg: String) {
-        val fullMsg = "$msg"
-        Log.i(TAG, fullMsg)
-        logToFile("I", TAG, fullMsg)
+        logToUI("I/$TAG: $msg")
     }
 
     private fun logError(msg: String, e: Throwable? = null) {
-        val fullMsg = if (e != null) "$msg: ${e.message}" else msg
-        Log.e(TAG, fullMsg, e)
-        logToFile("E", TAG, fullMsg)
-        e?.printStackTrace()
+        logToUI("E/$TAG: $msg" + (e?.let { " - ${it.message}" } ?: ""))
+        if (e != null) Log.e(TAG, msg, e)
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+        logInfo("Service created")
+        loadConfig()
     }
 
     private fun loadConfig() {
@@ -71,9 +63,10 @@ class ServerService : Service() {
             val jsonString = assets.open("config.json").bufferedReader().use { it.readText() }
             config = JSONObject(jsonString)
             mode = config.getString("mode")
-            logInfo("Config loaded: mode=$mode, network=${config.getJSONObject("network")}")
+            logInfo("Config loaded: mode=$mode")
         } catch (e: Exception) {
             logError("Failed to load config", e)
+            config = JSONObject() // fallback
         }
     }
 
@@ -127,71 +120,44 @@ class ServerService : Service() {
         val arch = getArchitecture()
         val networkType = try { config.getJSONObject("network").getString("type") } catch (e: Exception) { "local" }
 
-        logInfo("Architecture detected: $arch")
-        logInfo("Network type: $networkType")
-
-        // List assets antes de extraer (para debug)
-        try {
-            val assetList = assets.list("")?.joinToString() ?: "empty"
-            logDebug("Assets in root: $assetList")
-            val archAssets = assets.list(arch)?.joinToString() ?: "empty"
-            logDebug("Assets in $arch: $archAssets")
-        } catch (e: Exception) {
-            logError("Failed to list assets", e)
-        }
+        logInfo("Architecture: $arch, Network type: $networkType")
 
         // Extraer binarios
         extractAsset("$arch/qjs", File(appDir, "qjs"))
         extractAsset("$arch/qjsnet.so", File(appDir, "qjsnet.so"))
-
-        // Extraer JavaScript
         extractAsset("express.js", File(appDir, "express.js"))
         extractAsset("server.js", File(appDir, "server.js"))
 
-        // Si es onion, manejar Tor
         if (networkType == "onion") {
             val torFile = File(appDir, "tor")
             if (!torFile.exists()) {
                 extractAsset("$arch/tor", torFile)
             } else {
-                logDebug("Tor binary already exists, skipping extraction")
+                logDebug("Tor binary already exists")
             }
             torFile.setExecutable(true)
-
             extractAsset("tor/torrc", File(appDir, "torrc"))
-
-            try {
-                val hsDir = File(appDir, "hidden_service")
-                hsDir.mkdirs()
-                extractAsset("tor/hidden_service/hostname", File(hsDir, "hostname"))
-                extractAsset("tor/hidden_service/hs_ed25519_public_key", File(hsDir, "hs_ed25519_public_key"))
-                extractAsset("tor/hidden_service/hs_ed25519_secret_key", File(hsDir, "hs_ed25519_secret_key"))
-            } catch (e: Exception) {
-                logDebug("No hidden service files found in assets, will be created by Tor")
-            }
         }
 
-        // Dar permisos de ejecución a qjs
+        // Dar permisos
         File(appDir, "qjs").setExecutable(true)
 
-        // Verificar que los archivos están (¡CORREGIDO!)
-        logDebug("Files in app dir after extraction:")
+        // Listar archivos extraídos
+        logInfo("Files in app dir:")
         appDir.listFiles()?.forEach {
-            logDebug("  ${it.name} (${if (it.canExecute()) "executable" else "not executable"})")
+            logInfo("  ${it.name} (${it.length()} bytes, executable=${it.canExecute()})")
         }
-
-        logInfo("Asset extraction completed")
     }
 
     private fun extractAsset(assetPath: String, dest: File) {
-        logDebug("Extracting $assetPath -> ${dest.absolutePath}")
+        logDebug("Extracting $assetPath")
         try {
             assets.open(assetPath).use { input ->
                 FileOutputStream(dest).use { output ->
                     input.copyTo(output)
                 }
             }
-            logDebug("Extraction successful")
+            logDebug("Extracted $assetPath")
         } catch (e: Exception) {
             logError("Failed to extract $assetPath", e)
         }
@@ -214,8 +180,6 @@ class ServerService : Service() {
         val networkAddress = networkObj.optString("address", "")
         val networkPort = networkObj.optInt("port", 8080)
 
-        logInfo("Network config: type=$networkType, address=$networkAddress, port=$networkPort")
-
         if (networkType == "onion") {
             startTor(appDir)
             Thread.sleep(10000)
@@ -224,31 +188,22 @@ class ServerService : Service() {
         val address = when (networkType) {
             "onion" -> {
                 val hostnameFile = File(appDir, "hidden_service/hostname")
-                if (hostnameFile.exists()) {
-                    hostnameFile.readText().trim().also {
-                        logInfo("Onion address: $it")
-                    }
-                } else {
-                    logError("Hostname file not found")
-                    "unknown.onion"
-                }
+                if (hostnameFile.exists()) hostnameFile.readText().trim() else "unknown.onion"
             }
             else -> networkAddress
         }
-        val port = networkPort
 
-        logInfo("Server will bind to: $address:$port")
+        logInfo("Binding to $address:$networkPort")
 
-        // Crear server_run.js con la dirección y puerto
+        // Preparar server_run.js
         val serverJsFile = File(appDir, "server.js")
         if (!serverJsFile.exists()) {
             logError("server.js not found")
             return
         }
         val serverJsContent = serverJsFile.readText()
-        val modifiedContent = "const ADDRESS = '$address';\nconst PORT = $port;\n" + serverJsContent
+        val modifiedContent = "const ADDRESS = '$address';\nconst PORT = $networkPort;\n" + serverJsContent
         File(appDir, "server_run.js").writeText(modifiedContent)
-        logDebug("server_run.js created")
 
         val qjsPath = File(appDir, "qjs").absolutePath
         val serverPath = File(appDir, "server_run.js").absolutePath
@@ -256,23 +211,19 @@ class ServerService : Service() {
         logInfo("Executing: $qjsPath -m $serverPath")
         val processBuilder = ProcessBuilder(qjsPath, "-m", serverPath)
         processBuilder.directory(appDir)
-        val env = processBuilder.environment()
-        env["LD_LIBRARY_PATH"] = appDir.absolutePath
-
-        if (mode == "debug") {
-            processBuilder.redirectErrorStream(true)
-        }
+        processBuilder.environment()["LD_LIBRARY_PATH"] = appDir.absolutePath
+        processBuilder.redirectErrorStream(true)
 
         try {
             qjsProcess = processBuilder.start()
             logInfo("QuickJS started")
 
-            // Capturar salida del proceso y escribir al archivo de logs
+            // Leer salida en tiempo real
             Thread {
                 val reader = BufferedReader(InputStreamReader(qjsProcess!!.inputStream))
                 var line: String?
                 while (reader.readLine().also { line = it } != null) {
-                    logToFile("I", "QJS", line!!)
+                    logToUI("QJS: $line")
                 }
             }.start()
         } catch (e: Exception) {
@@ -282,33 +233,23 @@ class ServerService : Service() {
 
     private fun startTor(appDir: File) {
         logInfo("Starting Tor...")
-
         val torPath = File(appDir, "tor").absolutePath
         val torrcPath = File(appDir, "torrc").absolutePath
         val dataDir = File(appDir, "tor_data")
         dataDir.mkdirs()
 
-        logInfo("Tor command: $torPath -f $torrcPath --DataDirectory ${dataDir.absolutePath}")
-        val processBuilder = ProcessBuilder(
-            torPath,
-            "-f", torrcPath,
-            "--DataDirectory", dataDir.absolutePath
-        )
+        val processBuilder = ProcessBuilder(torPath, "-f", torrcPath, "--DataDirectory", dataDir.absolutePath)
         processBuilder.directory(appDir)
-
-        if (mode == "debug") {
-            processBuilder.redirectErrorStream(true)
-        }
+        processBuilder.redirectErrorStream(true)
 
         try {
             torProcess = processBuilder.start()
             logInfo("Tor started")
-
             Thread {
                 val reader = BufferedReader(InputStreamReader(torProcess!!.inputStream))
                 var line: String?
                 while (reader.readLine().also { line = it } != null) {
-                    logToFile("I", "TOR", line!!)
+                    logToUI("TOR: $line")
                 }
             }.start()
         } catch (e: Exception) {
