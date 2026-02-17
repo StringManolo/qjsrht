@@ -3,41 +3,72 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp"
-    android:background="#000000">
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="qjsrht Server Logs"
-        android:textSize="20sp"
-        android:textColor="#00FF00"
-        android:textStyle="bold"
-        android:paddingBottom="8dp" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Server is running in background. Logs will appear below:"
-        android:textSize="14sp"
-        android:textColor="#CCCCCC"
-        android:paddingBottom="16dp" />
+    android:padding="8dp">
 
     <ScrollView
         android:id="@+id/scrollView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#111111"
-        android:padding="8dp">
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
 
         <TextView
             android:id="@+id/logTextView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="#00FF00"
-            android:textSize="12sp"
+            android:textIsSelectable="true"
             android:fontFamily="monospace"
-            android:text="Waiting for logs...\n" />
+            android:textSize="10sp"
+            android:padding="4dp" />
     </ScrollView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingTop="8dp">
+
+        <Button
+            android:id="@+id/btnTestQjs"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Test QJS" />
+
+        <Button
+            android:id="@+id/btnTestTor"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Test Tor" />
+
+        <Button
+            android:id="@+id/btnClearLogs"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Clear" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingTop="8dp">
+
+        <Button
+            android:id="@+id/btnRestartServer"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Restart Server" />
+
+        <Button
+            android:id="@+id/btnStopServer"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Stop Server" />
+    </LinearLayout>
 
 </LinearLayout>
