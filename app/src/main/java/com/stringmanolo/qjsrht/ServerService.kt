@@ -95,15 +95,15 @@ class ServerService : Service() {
 
         logDebug("Architecture: $arch")
 
-        // Extraer binarios (siempre sobrescribir qjs y qjsnet.so)
+        // Extract binaries
         extractAsset("$arch/qjs", File(appDir, "qjs"))
         extractAsset("$arch/qjsnet.so", File(appDir, "qjsnet.so"))
 
-        // Extraer JavaScript
+        // Extract JavaScript files
         extractAsset("express.js", File(appDir, "express.js"))
         extractAsset("server.js", File(appDir, "server.js"))
 
-        // Si es onion, manejar Tor
+        // If onion mode, handle Tor
         if (networkType == "onion") {
             val torFile = File(appDir, "tor")
             if (!torFile.exists()) {
@@ -195,7 +195,7 @@ class ServerService : Service() {
         }
 
         qjsProcess = processBuilder.start()
-        logDebug("QuickJS started (PID: ${qjsProcess?.pid()})")
+        logDebug("QuickJS started")  // Eliminada referencia a pid
 
         if (mode == "debug") {
             Thread {
@@ -228,7 +228,7 @@ class ServerService : Service() {
         }
 
         torProcess = processBuilder.start()
-        logDebug("Tor started (PID: ${torProcess?.pid()})")
+        logDebug("Tor started")  // Eliminada referencia a pid
 
         if (mode == "debug") {
             Thread {
