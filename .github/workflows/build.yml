@@ -73,17 +73,14 @@ jobs:
         export STRIP="$TOOLCHAIN/llvm-strip"
         export RANLIB="$TOOLCHAIN/llvm-ranlib"
 
-        # Compilar nativo para generar qjsc (si no está ya hecho)
         cd build/quickjs-src
-        make -j$(nproc) qjsc  # Solo qjsc, no todo
+        make -j$(nproc) qjsc
 
-        # Crear directorio limpio para compilación cruzada
         mkdir -p ../quickjs-cross-arm64
         cp -r . ../quickjs-cross-arm64
         cd ../quickjs-cross-arm64
-        make clean  # Eliminar cualquier objeto previo
+        make clean
 
-        # Compilar qjs dinámico
         make qjs \
           CC="$CC" \
           AR="$AR" \
@@ -141,7 +138,7 @@ jobs:
         export STRIP="$TOOLCHAIN/llvm-strip"
 
         $CC -shared -fPIC -o qjsnet.so src/qjs_sockets.c \
-          -I../quickjs-src \
+          -I../../quickjs-src \
           -Os
 
         $STRIP qjsnet.so
@@ -157,17 +154,16 @@ jobs:
         export STRIP="$TOOLCHAIN/llvm-strip"
 
         $CC -shared -fPIC -o qjsnet.so src/qjs_sockets.c \
-          -I../quickjs-src \
+          -I../../quickjs-src \
           -Os
 
         $STRIP qjsnet.so
         cp qjsnet.so ../../app/src/main/assets/arm64/
 
-    # Parchear y copiar express.js
-    - name: Patch and copy express.js
+    # Parchear express.js con el import correcto (¡clave!)
+    - name: Patch express.js import
       run: |
-        sed -i 's/network_sockets\.so/qjsnet.so/g' build/qjsNetworkSockets/extra/express.js
-        sed -i 's|/dist/||g' build/qjsNetworkSockets/extra/express.js
+        sed -i 's|import sockets from '\''../dist/network_sockets.so'\'';|import sockets from '\''./qjsnet.so'\'';|' build/qjsNetworkSockets/extra/express.js
         cp build/qjsNetworkSockets/extra/express.js app/src/main/assets/express.js
 
     - name: Download Tor binaries for ARM (if onion mode)
