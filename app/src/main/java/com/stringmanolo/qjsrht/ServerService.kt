@@ -179,8 +179,8 @@ class ServerService : Service() {
         val scriptFile = File(appDir, "curl")
         val scriptContent = """#!/system/bin/sh
 # Wrapper for curl with bundled CA certificates
-DIR=$(dirname "$0")
-exec "$DIR/_curl" --cacert "$DIR/cacert.pem" "$@"
+DIR=$(dirname "${'$'}0")
+exec "${'$'}DIR/_curl" --cacert "${'$'}DIR/cacert.pem" "${'$'}@"
 """
         scriptFile.writeText(scriptContent)
         scriptFile.setExecutable(true)
