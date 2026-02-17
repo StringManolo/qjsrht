@@ -223,14 +223,14 @@ jobs:
     
     - name: Upload Debug APK
       if: steps.config.outputs.mode == 'debug'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: app-debug-apk
         path: app/build/outputs/apk/debug/app-debug.apk
     
     - name: Upload Release APK
       if: steps.config.outputs.mode == 'production'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: app-release-apk
         path: app/build/outputs/apk/release/app-release-unsigned.apk
