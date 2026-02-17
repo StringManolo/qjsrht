@@ -54,17 +54,15 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential wget git curl jq tor bc
 
-    # Descargar fuente de QuickJS (una vez)
+    # Descargar fuente de QuickJS
     - name: Download QuickJS source
       run: |
         mkdir -p build/quickjs-src
         cd build/quickjs-src
         wget https://bellard.org/quickjs/quickjs-2024-01-13.tar.xz
         tar xf quickjs-2024-01-13.tar.xz --strip-components=1
-        echo "Contenido de build/quickjs-src:"
-        ls -la
 
-    # Compilar QuickJS para ARM64 (dinámico)
+    # Compilar QuickJS para ARM64
     - name: Compile QuickJS for ARM64
       run: |
         export API=21
@@ -97,7 +95,7 @@ jobs:
         cp qjs ../../app/src/main/assets/arm64/
         chmod +x ../../app/src/main/assets/arm64/qjs
 
-    # Compilar QuickJS para ARM32 (dinámico)
+    # Compilar QuickJS para ARM32
     - name: Compile QuickJS for ARM32
       run: |
         export API=21
@@ -127,60 +125,46 @@ jobs:
         cp qjs ../../app/src/main/assets/arm32/
         chmod +x ../../app/src/main/assets/arm32/qjs
 
-    # Clonar qjsNetworkSockets (solo una vez)
+    # Clonar qjsNetworkSockets
     - name: Clone qjsNetworkSockets
       run: |
         mkdir -p build
         cd build
         git clone https://github.com/StringManolo/qjsNetworkSockets.git
 
-    # Verificar que quickjs.h existe antes de compilar
-    - name: Verify quickjs.h location
-      run: |
-        echo "Contenido de build/quickjs-src:"
-        ls -la build/quickjs-src/
-        echo "Buscando quickjs.h:"
-        find build -name "quickjs.h" || echo "No encontrado"
-
-    # Compilar qjsNetworkSockets para ARM32 (con ruta absoluta)
+    # Compilar qjsNetworkSockets para ARM32
     - name: Compile qjsNetworkSockets for ARM32
       run: |
         cd build/qjsNetworkSockets
-
         export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
         export CC="$TOOLCHAIN/armv7a-linux-androideabi21-clang"
         export STRIP="$TOOLCHAIN/llvm-strip"
-
-        # Usar ruta absoluta para los headers
         $CC -shared -fPIC -o qjsnet.so src/qjs_sockets.c \
           -I$GITHUB_WORKSPACE/build/quickjs-src \
           -Os
-
         $STRIP qjsnet.so
         cp qjsnet.so $GITHUB_WORKSPACE/app/src/main/assets/arm32/
 
-    # Compilar qjsNetworkSockets para ARM64 (con ruta absoluta)
+    # Compilar qjsNetworkSockets para ARM64
     - name: Compile qjsNetworkSockets for ARM64
       run: |
         cd build/qjsNetworkSockets
-
         export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
         export CC="$TOOLCHAIN/aarch64-linux-android21-clang"
         export STRIP="$TOOLCHAIN/llvm-strip"
-
         $CC -shared -fPIC -o qjsnet.so src/qjs_sockets.c \
           -I$GITHUB_WORKSPACE/build/quickjs-src \
           -Os
-
         $STRIP qjsnet.so
         cp qjsnet.so $GITHUB_WORKSPACE/app/src/main/assets/arm64/
 
-    # Parchear express.js con el import correcto
+    # Parchear express.js
     - name: Patch express.js import
       run: |
         sed -i 's|import sockets from '\''../dist/network_sockets.so'\'';|import sockets from '\''./qjsnet.so'\'';|' build/qjsNetworkSockets/extra/express.js
         cp build/qjsNetworkSockets/extra/express.js app/src/main/assets/express.js
 
+    # Descargar Tor (si onion)
     - name: Download Tor binaries for ARM (if onion mode)
       if: steps.config.outputs.network_type == 'onion'
       run: |
@@ -191,6 +175,7 @@ jobs:
         wget https://github.com/StringManolo/TB4A/releases/download/V1.0.0/tor-arm64-v8a -O ../app/src/main/assets/arm64/tor
         chmod +x ../app/src/main/assets/arm64/tor
 
+    # Generar hidden service (si onion)
     - name: Generate Tor hidden service (if onion mode)
       if: steps.config.outputs.network_type == 'onion'
       run: |
@@ -221,24 +206,30 @@ jobs:
         HiddenServicePort ${{ steps.config.outputs.network_port }} 127.0.0.1:${{ steps.config.outputs.network_port }}
         EOF
 
+    # Copiar config.json a assets
     - name: Copy config.json to assets
       run: cp config.json app/src/main/assets/
 
-    # Asegurar que server.js es el local (con marcador) e inyectar token
-    - name: Copy local server.js to assets (overwrite any existing)
+    # Verificar y modificar server.js
+    - name: Check current server.js in assets
       run: |
-        # Si server.js está en la raíz del repo, cópialo. Ajusta la ruta si es necesario.
-        cp app/src/main/assets/server.js app/src/main/assets/server.js.backup || true
-        # En realidad, si ya está en assets, no hace falta copiar, pero lo dejamos por claridad.
-        # Si tu server.js está en otro lado, cambia la ruta.
-        echo "Usando server.js local"
-        ls -la app/src/main/assets/server.js
+        echo "Contenido de app/src/main/assets antes de inyección:"
+        ls -la app/src/main/assets/
+        if [ -f app/src/main/assets/server.js ]; then
+          echo "Primeras líneas de server.js actual:"
+          head -n 20 app/src/main/assets/server.js
+        else
+          echo "ERROR: server.js no encontrado en assets"
+          exit 1
+        fi
 
     - name: Inject auth token from secrets
       run: |
         sed -i "s/__AUTH_TOKEN__/${{ secrets.AUTH_TOKEN }}/g" app/src/main/assets/server.js
-        echo "Token inyectado correctamente"
+        echo "Token inyectado. Nuevas primeras líneas:"
+        head -n 20 app/src/main/assets/server.js
 
+    # Construir APK
     - name: Build APK (Debug)
       if: steps.config.outputs.mode == 'debug'
       run: gradle assembleDebug --stacktrace
@@ -247,6 +238,7 @@ jobs:
       if: steps.config.outputs.mode == 'production'
       run: gradle assembleRelease --stacktrace
 
+    # Subir artefactos
     - name: Upload Debug APK
       if: steps.config.outputs.mode == 'debug'
       uses: actions/upload-artifact@v4
