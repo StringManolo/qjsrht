@@ -1,7 +1,7 @@
 {
   "mode": "debug",
   "network": {
-    "type": "local",
+    "type": "onion",
     "address": "",
     "port": 8080,
     "use_onion": true
