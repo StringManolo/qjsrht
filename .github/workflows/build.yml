@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # Usamos 22.04 para compatibilidad con tu workflow de compilación
+    runs-on: ubuntu-22.04
 
     steps:
     - name: Checkout code
@@ -52,120 +52,75 @@ jobs:
     - name: Install build dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential wget git curl jq tor bc
+        sudo apt-get install -y build-essential wget git curl jq tor
 
-    # Compilar QuickJS para ARM64 (dinámico) con correcciones TLS
-    - name: Compile QuickJS for ARM64 (dynamic)
+    # Descargar fuente de QuickJS (una vez)
+    - name: Download QuickJS source
+      run: |
+        mkdir -p build/quickjs-src
+        cd build/quickjs-src
+        wget https://bellard.org/quickjs/quickjs-2024-01-13.tar.xz
+        tar xf quickjs-2024-01-13.tar.xz --strip-components=1
+
+    # Compilar QuickJS para ARM64 (dinámico)
+    - name: Compile QuickJS for ARM64
       run: |
         export API=21
         export HOST_TRIPLE="aarch64-linux-android"
-        export TLS_ALIGN=64
         export TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
         export CC="$TOOLCHAIN/${HOST_TRIPLE}${API}-clang"
         export AR="$TOOLCHAIN/llvm-ar"
         export STRIP="$TOOLCHAIN/llvm-strip"
-        export RANLIB="$TOOLCHAIN/llvm-ranlib"
 
-        mkdir -p build/quickjs-arm64
-        cd build/quickjs-arm64
-        wget https://bellard.org/quickjs/quickjs-2024-01-13.tar.xz
-        tar xf quickjs-2024-01-13.tar.xz
-        cd quickjs-2024-01-13
-
-        # Compilar nativo primero (para generar qjsc)
-        make -j$(nproc)
+        # Compilar nativo para generar qjsc (necesario para make)
+        cd build/quickjs-src
+        make -j$(nproc)  # Esto genera qjsc nativo
 
         # Crear directorio para compilación cruzada
-        cd ..
-        cp -r quickjs-2024-01-13 quickjs-cross
-        cd quickjs-cross
+        mkdir -p ../quickjs-cross-arm64
+        cp -r . ../quickjs-cross-arm64
+        cd ../quickjs-cross-arm64
 
-        # Aplicar correcciones de alineación TLS (como en tu workflow)
-        echo "Adding __attribute__((aligned(${TLS_ALIGN}))) to __thread variables"
-        find . -name '*.[ch]' -exec sed -i 's/\(\b__thread\b\)/__thread __attribute__((aligned('${TLS_ALIGN}')))/g' {} \;
-
-        # Crear archivo de ensamblador para forzar alineación
-        cat > tls_force_align.S <<EOF
-        .section .tdata,"awT",%progbits
-        .p2align $(echo "l(${TLS_ALIGN})/l(2)" | bc -l | cut -d. -f1)
-        .globl quickjs_tls_force_align
-        .type quickjs_tls_force_align, %object
-        .size quickjs_tls_force_align, ${TLS_ALIGN}
-        quickjs_tls_force_align:
-        .zero ${TLS_ALIGN}
-        EOF
-
-        # Compilar el objeto de alineación
-        $CC -c tls_force_align.S -o tls_force_align.o
-
-        # Compilar qjs dinámico (sin -static)
-        export CFLAGS="-fPIC -O2 -ftls-model=initial-exec -pthread"
-        export LDFLAGS="-pthread -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384 -Wl,-z,relro,-z,now"
+        # Compilar qjs dinámico
         make qjs \
           CC="$CC" \
           AR="$AR" \
-          QJSC="../quickjs-2024-01-13/qjsc" \
-          LDFLAGS="$LDFLAGS" \
-          LIBS="tls_force_align.o -lm -ldl" \
+          QJSC="../quickjs-src/qjsc" \
+          LDFLAGS="-pthread" \
+          LIBS="-lm -ldl" \
           -j$(nproc)
 
         $STRIP qjs
-        mkdir -p ../../../app/src/main/assets/arm64
-        cp qjs ../../../app/src/main/assets/arm64/
-        chmod +x ../../../app/src/main/assets/arm64/qjs
+        mkdir -p ../../app/src/main/assets/arm64
+        cp qjs ../../app/src/main/assets/arm64/
+        chmod +x ../../app/src/main/assets/arm64/qjs
 
     # Compilar QuickJS para ARM32 (dinámico)
-    - name: Compile QuickJS for ARM32 (dynamic)
+    - name: Compile QuickJS for ARM32
       run: |
         export API=21
         export HOST_TRIPLE="armv7a-linux-androideabi"
-        export TLS_ALIGN=32
         export TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
         export CC="$TOOLCHAIN/${HOST_TRIPLE}${API}-clang"
         export AR="$TOOLCHAIN/llvm-ar"
         export STRIP="$TOOLCHAIN/llvm-strip"
-        export RANLIB="$TOOLCHAIN/llvm-ranlib"
 
-        mkdir -p build/quickjs-arm32
-        cd build/quickjs-arm32
-        wget https://bellard.org/quickjs/quickjs-2024-01-13.tar.xz
-        tar xf quickjs-2024-01-13.tar.xz
-        cd quickjs-2024-01-13
-        make -j$(nproc)
+        mkdir -p build/quickjs-cross-arm32
+        cp -r build/quickjs-src/* build/quickjs-cross-arm32/
+        cd build/quickjs-cross-arm32
 
-        cd ..
-        cp -r quickjs-2024-01-13 quickjs-cross
-        cd quickjs-cross
-
-        echo "Adding __attribute__((aligned(${TLS_ALIGN}))) to __thread variables"
-        find . -name '*.[ch]' -exec sed -i 's/\(\b__thread\b\)/__thread __attribute__((aligned('${TLS_ALIGN}')))/g' {} \;
-
-        cat > tls_force_align.S <<EOF
-        .section .tdata,"awT",%progbits
-        .p2align $(echo "l(${TLS_ALIGN})/l(2)" | bc -l | cut -d. -f1)
-        .globl quickjs_tls_force_align
-        .type quickjs_tls_force_align, %object
-        .size quickjs_tls_force_align, ${TLS_ALIGN}
-        quickjs_tls_force_align:
-        .zero ${TLS_ALIGN}
-        EOF
-
-        $CC -c tls_force_align.S -o tls_force_align.o
-
-        export CFLAGS="-fPIC -O2 -ftls-model=initial-exec -pthread"
-        export LDFLAGS="-pthread -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384 -Wl,-z,relro,-z,now"
         make qjs \
           CC="$CC" \
           AR="$AR" \
-          QJSC="../quickjs-2024-01-13/qjsc" \
-          LDFLAGS="$LDFLAGS" \
-          LIBS="tls_force_align.o -lm -ldl" \
+          QJSC="../quickjs-src/qjsc" \
+          LDFLAGS="-pthread" \
+          LIBS="-lm -ldl" \
           -j$(nproc)
 
         $STRIP qjs
-        mkdir -p ../../../app/src/main/assets/arm32
-        cp qjs ../../../app/src/main/assets/arm32/
-        chmod +x ../../../app/src/main/assets/arm32/qjs
+        mkdir -p ../../app/src/main/assets/arm32
+        cp qjs ../../app/src/main/assets/arm32/
+        chmod +x ../../app/src/main/assets/arm32/qjs
 
     # Compilar qjsNetworkSockets para ARM32
     - name: Clone and compile qjsNetworkSockets for ARM32
@@ -179,9 +134,8 @@ jobs:
         export CC="$TOOLCHAIN/armv7a-linux-androideabi21-clang"
         export STRIP="$TOOLCHAIN/llvm-strip"
 
-        # Usar headers de la compilación de QuickJS (con las correcciones TLS)
         $CC -shared -fPIC -o qjsnet.so src/qjs_sockets.c \
-          -I../../quickjs-arm32/quickjs-cross \
+          -I../quickjs-src \
           -Os
 
         $STRIP qjsnet.so
@@ -197,7 +151,7 @@ jobs:
         export STRIP="$TOOLCHAIN/llvm-strip"
 
         $CC -shared -fPIC -o qjsnet.so src/qjs_sockets.c \
-          -I../../quickjs-arm64/quickjs-cross \
+          -I../quickjs-src \
           -Os
 
         $STRIP qjsnet.so
