@@ -2,23 +2,13 @@
 // ADDRESS and PORT are injected automatically from config.json
 
 import express from './express.js';
-import * as os from 'os';  // Módulo nativo para ejecutar comandos
+import * as std from 'std';  // Importar std para popen
 
 const app = express();
 
-const AUTH_TOKEN = "__AUTH_TOKEN__";;
+const AUTH_TOKEN = "__AUTH_TOKEN__";
 
-// Middleware de autenticación
-function authenticate(req, res, next) {
-    const auth = req.headers.authorization;
-    if (!auth || !auth.startsWith('Bearer ') || auth.slice(7) !== AUTH_TOKEN) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
-    }
-    next();
-}
-
-// Logging middleware (imprime en consola cada petición)
+// Logging middleware
 app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
     next();
@@ -26,6 +16,7 @@ app.use((req, res, next) => {
 
 // Endpoint público: información del servidor
 app.get('/', (req, res) => {
+    console.log("DEBUG: GET /");
     res.json({
         message: 'Welcome to qjsrht!',
         timestamp: new Date().toISOString(),
@@ -35,19 +26,22 @@ app.get('/', (req, res) => {
 
 // Endpoint público: health check
 app.get('/health', (req, res) => {
+    console.log("DEBUG: GET /health");
     res.json({ status: 'ok', uptime: process.uptime || 0 });
 });
 
-// Endpoint público: echo (para probar POST)
+// Endpoint público: echo
 app.post('/echo', (req, res) => {
+    console.log("DEBUG: POST /echo");
     res.json({
         received: req.body,
         headers: req.headers
     });
 });
 
-// Endpoint público de ejemplo (parámetros en ruta)
+// Endpoint de ejemplo con parámetros
 app.get('/api/users/:id', (req, res) => {
+    console.log("DEBUG: GET /api/users/:id, id=" + req.params.id);
     res.json({
         userId: req.params.id,
         name: 'Sample User',
@@ -56,40 +50,78 @@ app.get('/api/users/:id', (req, res) => {
 });
 
 // Endpoint protegido: ejecutar comandos del sistema
-app.post('/exec', authenticate, (req, res) => {
-    const { cmd } = req.body;
-    if (!cmd || typeof cmd !== 'string') {
-        res.status(400).json({ error: 'Missing or invalid cmd' });
+app.post('/exec', (req, res) => {
+    console.log("DEBUG 1: Entrando a /exec");
+    console.log("DEBUG: req.body =", req.body);
+    console.log("DEBUG: req.headers.authorization =", req.headers.authorization);
+    console.log("DEBUG: tipo de res.json =", typeof res.json);
+    console.log("DEBUG: tipo de res.send =", typeof res.send);
+    console.log("DEBUG: tipo de res.status =", typeof res.status);
+
+    // Autenticación manual
+    const auth = req.headers.authorization;
+    if (!auth || !auth.startsWith('Bearer ') || auth.slice(7) !== AUTH_TOKEN) {
+        console.log("DEBUG 1.1 - No autorizado");
+        res.send(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+    }
+    console.log("DEBUG 1.2 - Autorizado");
+
+    // Parsear el cuerpo JSON
+    let bodyObj;
+    try {
+        bodyObj = JSON.parse(req.body);
+        console.log("DEBUG: bodyObj =", bodyObj);
+    } catch (e) {
+        console.log("DEBUG: Error parsing JSON:", e.message);
+        res.send(JSON.stringify({ error: 'Invalid JSON' }));
         return;
     }
 
+    const { cmd } = bodyObj;
+    if (!cmd || typeof cmd !== 'string') {
+        console.log("DEBUG: cmd missing or not string");
+        res.send(JSON.stringify({ error: 'Missing or invalid cmd' }));
+        return;
+    }
+
+    console.log("DEBUG: cmd =", cmd);
+
+    // Ejecutar comando usando std.popen
     try {
-        // Redirigir stderr a stdout para capturar todo
         const fullCmd = cmd + ' 2>&1';
-        const fp = os.popen(fullCmd, 'r');  // Abre un pipe para leer la salida
+        console.log("DEBUG: Ejecutando con std.popen:", fullCmd);
+        const fp = std.popen(fullCmd, 'r');
         let output = '';
-        while (true) {
-            const line = fp.getline();  // Lee línea por línea
-            if (line === null) break;
+        let line;
+        while ((line = fp.getline()) !== null) {
             output += line + '\n';
         }
-        const status = fp.close();  // Código de salida del comando
+        const status = fp.close();
+        console.log("DEBUG: Comando terminado con status", status);
+        console.log("DEBUG: output length =", output.length);
 
-        res.json({ output, status });
+        res.send(JSON.stringify({ output, status }));
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        console.log("DEBUG: Excepción en ejecución:", e.message);
+        res.send(JSON.stringify({ error: e.message }));
     }
 });
 
-// Manejador para rutas no encontradas
+// Manejador 404 (comentado temporalmente para pruebas)
+/*
 app.use((req, res) => {
+    console.log("DEBUG: 404 - No encontrado:", req.path);
     res.status(404).json({
         error: 'Not Found',
         path: req.path
     });
 });
+*/
 
-// Inicio del servidor (ADDRESS y PORT vienen del runtime)
+// Inicio del servidor (usando valores fijos para debug)
+//const ADDRESS = "127.0.0.1";
+//const PORT = 10000;
 console.log(`Starting server on ${ADDRESS}:${PORT}`);
 app.listen(PORT, ADDRESS, () => {
     console.log(`Server running at ${ADDRESS}:${PORT}`);
